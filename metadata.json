@@ -1,0 +1,6 @@
+{
+  "name": "Aura AI - Companion & Girlfriend PWA",
+  "description": "Ultra-lightweight AI Girlfriend & Companion PWA with low-token JSON memory, local/cloud LLM connectivity, consistent selfie generation, and live weather & news context.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

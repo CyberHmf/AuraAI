@@ -1,0 +1,189 @@
+# 💖 Aura AI — Compagnon & AI Girlfriend PWA
+
+> 🌐 **[English Version (README.md)](./README.md)** · **Version Française (actuelle)**
+
+> **Application Web Progressive (PWA) de nouvelle génération.**  
+> Spécialement conçue pour **résoudre le problème de surconsommation monstrueuse de tokens** grâce à une architecture mémoire ultra-légère inspirée de *JanitorAI / World-Info*, avec **Vision multimodale**, **selfies au visage constant (*Face Anchor*)**, **détecteur de jalousie interactif**, **notes vocales WhatsApp animées**, **synthèse vocale TTS (Web Speech gratuite & GPU Local)** et **ancrage dans le monde réel (météo & actualités en direct)**.
+
+---
+
+## ⚡ Pourquoi Aura AI ?
+
+| Critère | Her&Him Classique | Aura AI (Cette Application) |
+| :--- | :--- | :--- |
+| **Mémoire par tour** | Historique brut complet + logs verbeux | **Carte JSON JanitorAI compacte (~40 tokens)** |
+| **Historique actif** | Illimité ou mal tronqué (5 000 - 15 000 tok) | **Fenêtre glissante optimisée (4 à 12 messages = ~200 tok)** |
+| **Total par échange** | **~15 000 tokens** | **~450 tokens** |
+| **Économie moyenne** | Référence (0%) | **~95% de tokens économisés !** |
+| **Coût d'usage** | Abonnement payant ou facture d'API élevée | **100% Gratuit possible (Ollama local, Groq, Web Speech)** |
+| **Vision** | Limitée ou payante | **Multimodale native (Ollama Vision, Groq, Gemini)** |
+| **Visage des selfies** | Souvent aléatoire et changeant | **Visage constant verrouillé via *Face Anchor Prompt*** |
+| **Mobile** | Souvent desktop-only | **PWA installable plein écran iOS & Android** |
+
+---
+
+## 🐳 Démarrage Rapide avec Docker (Recommandé en Local)
+
+L'application est entièrement prête pour être conteneurisée et lancée en local sur votre Docker.
+
+### Méthode 1 : Avec Docker Compose (Le plus simple)
+
+1. **Cloner le dépôt ou ouvrir le dossier du projet** :
+   ```bash
+   git clone <URL_DU_DEPOT>
+   cd AuraAI
+   ```
+
+2. **Lancer le conteneur en arrière-plan** :
+   ```bash
+   docker compose up -d --build
+   ```
+
+3. **Accéder à l'application** :  
+   Ouvrez votre navigateur sur : **`http://localhost:9876`**
+
+4. **Arrêter l'application** :
+   ```bash
+   docker compose down
+   ```
+
+---
+
+### Méthode 2 : Avec la CLI Docker standard
+
+```bash
+# 1. Construire l'image Docker
+docker build -t aura-ai .
+
+# 2. Lancer le conteneur en local sur le port 9876 avec persistance ./data
+docker run -d \
+  -p 127.0.0.1:9876:9876 \
+  -v $(pwd)/data:/app/data \
+  --add-host=host.docker.internal:host-gateway \
+  --name aura-ai \
+  aura-ai
+```
+
+> 💡 **Important pour les services locaux (Ollama, ComfyUI, XTTS-v2)** :  
+> Le paramètre `extra_hosts` (ou `--add-host`) permet au conteneur Docker de communiquer directement avec vos modèles locaux tournant sur votre machine hôte via l'adresse :  
+> 👉 **`http://host.docker.internal:11434/v1`** (pour Ollama)  
+> 👉 **`http://host.docker.internal:8188`** (pour ComfyUI)  
+> 👉 **`http://host.docker.internal:8020/v1/audio/speech`** (pour votre serveur TTS local)
+
+---
+
+## 🔒 Sécurité & Déploiement Public
+
+Aura AI est conçu comme une **application compagnon auto-hébergée et privée** :
+- **Écoute locale par défaut** : `docker-compose.yml` publie le port sur `127.0.0.1:9876` afin de ne jamais exposer l'instance par erreur sur tout le réseau.
+- **Clés API jamais renvoyées au navigateur** : Vos clés restent stockées dans `data/keys.json` sur le serveur. `GET /api/keys` et `/api/state` ne renvoient que des booléens (`has*Key`) et tous les appels fournisseurs (Gemini, Groq, OpenRouter, NanoGPT, Ollama, TTS) passent par les proxies Express.
+- **Authentification optionnelle (`AUTH_TOKEN`)** : Définissez `AUTH_TOKEN` dans `.env` pour verrouiller toutes les routes `/api/*` (y compris `/api/keys`, `/api/state`, `/api/logs`, `/api/images/*` et `/api/reset-state`) via un écran de connexion et un cookie signé `HttpOnly`.
+- **Protection SSRF & Rate Limiting** : Les proxies réseau bloquent les adresses de métadonnées cloud (`169.254.0.0/16`, `metadata.google.internal`, `100.100.100.200`, `fe80::/10`), les schémas non-`http(s)` et les redirections HTTP, tout en continuant d'autoriser `localhost`, `host.docker.internal` et votre réseau local (Ollama/ComfyUI/XTTS).
+- ⚠️ **Ne jamais exposer directement sur Internet** : Si vous hébergez Aura AI sur un VPS ou un nom de domaine public, activez obligatoirement `AUTH_TOKEN` et passez par un **reverse proxy HTTPS authentifié** (Nginx, Caddy, Traefik ou Cloudflare Tunnel).
+
+---
+
+## 💻 Démarrage Classique (Sans Docker avec Node.js)
+
+### Prérequis
+- **Node.js** v20 ou supérieur
+- **npm** (ou **bun**)
+
+```bash
+# 1. Installer les dépendances
+npm ci
+
+# 2. (Optionnel) Copier le modèle d'environnement
+cp .env.example .env
+
+# 3. Lancer en mode développement
+npm run dev
+
+# Ou compiler et lancer en mode production :
+npm run build
+npm start
+```
+
+L'application est disponible par défaut sur : **`http://localhost:9876`** (configurable via `PORT` dans `.env`).
+
+---
+
+## ✨ Fonctionnalités Clés & Dernières Nouveautés
+
+### 1. 🌶️ Détecteur de Jalousie & Réparties Piquantes
+- **Détection sémantique en temps réel** : Si vous mentionnez une collègue, une amie, une ex, un rencard ou une absence dans le chat (*ou via le bouton rapide "Tester la jalousie 🌶️"*), son humeur bascule instantanément en mode jalouse/taquine.
+- **Réparties cinglantes et piquantes** : Elle vous questionne avec une pointe d'espièglerie et de possessivité douce (*« Ah oui ? Et elle est si intéressante que ça cette collègue ? »*).
+- **Bandeau d'alerte & Bouton "La rassurer 💕"** : Un clic ou quelques mots tendres suffisent pour qu'elle fonde de bonheur et retrouve son grand sourire.
+
+### 2. 🎙️ Notes Vocales WhatsApp avec Visualiseur Audio Animé
+- **Bulle vocale style WhatsApp/Telegram** : Intégrée directement dans le flux de messages avec avatar, nom, minuteur (`0:05 / 0:14`) et statut (*Message vocal* ou *Chuchotement secret 🤫*).
+- **Visualiseur à ondes audio** : Les barres de spectrogramme s'animent et progressent en temps réel pendant la lecture.
+- **Contrôles avancés** :
+  - Bouton Play / Pause dynamique
+  - Sélecteur de vitesse de lecture : **`1x`**, **`1.5x`**, **`2x`**
+  - Accordéon dépliable pour afficher ou masquer la transcription textuelle.
+- **100% Gratuit** : Fonctionne nativement avec la synthèse vocale intégrée du navigateur (**Web Speech API**) ou votre serveur GPU local (**XTTS-v2 / Piper / AllTalk**).
+
+### 3. 🧖‍♀️ Scénarios de Selfies Candid (Visage 100% Constant)
+- **Garantie zéro déformation & Face Anchor invariant** : Chaque photo préserve strictement la structure faciale, la coupe et les traits de votre compagne.
+- **Nouveaux scénarios ultra-réalistes intégrés** :
+  - **Sortie de douche 🧖‍♀️** : Serviette blanche dans les cheveux, peau fraîche et lumineuse, gouttelettes délicates, regard complice.
+  - **Sous la couette 🌙** : Au lit tard le soir sous les draps, nuisette soyeuse, lumière tamisée de chevet.
+  - **Miroir & Tenue** : Vérification d'essayage avant de sortir.
+  - **Gothique aux chandelles & Rebelle rock cuir** pour les personnalités sombres.
+
+### 4. 🧹 Double Option de Réinitialisation ("Clear")
+- **1. Remise à zéro SOFT (Recommandée)** :
+  - Vide les messages du chat, les photos échangées et la mémoire volatile.
+  - **Préserve scrupuleusement le profil de la Girlfriend** (son nom, sa bio, ses goûts et surtout son portrait avatar d'origine intact).
+- **2. Remise à zéro COMPLÈTE & IRRÉVERSIBLE (HARD)** :
+  - Efface l'intégralité du LocalStorage (Girlfriend, User, mémoires, albums, configs) et repart d'une feuille vierge.
+  - Protégée par confirmation textuelle (`RESET`).
+
+### 5. 👁️ Vision Multimodale (Analyse de vos Photos)
+- Envoyez vos propres photos dans le chat (repas, bureau de travail, paysage, animal, vêtements...).
+- Elle analyse l'image, réagit avec émotion et stocke les faits clés dans sa mémoire légère pour s'en souvenir lors des prochains échanges.
+
+---
+
+## 🛠️ Configuration des Modèles LLM & TTS (100% Gratuit)
+
+Ouvrez le panneau **Moteurs & LLM** (icône en haut à droite) :
+
+### Option A : LLM Local avec Ollama (100% Gratuit & Privé)
+1. Installez [Ollama](https://ollama.com).
+2. Téléchargez un modèle (ex: Llama 3.2 Vision ou Llama 3) :
+   ```bash
+   ollama run llama3.2-vision
+   ```
+3. Dans Aura AI :
+   - Fournisseur : **LLM Local (Ollama / LM Studio)**
+   - Si lancé hors Docker : `http://localhost:11434/v1`
+   - Si lancé dans Docker : `http://host.docker.internal:11434/v1`
+   - Modèle : `llama3.2-vision` (ou `llama3`)
+
+### Option B : Groq (Cloud ultra-rapide & gratuit)
+1. Créez un compte gratuit sur [console.groq.com](https://console.groq.com).
+2. Créez une clé d'API et collez-la dans Aura AI.
+3. Modèle recommandé : `llama-3.3-70b-versatile`.
+
+### Option C : OpenRouter (Modèles gratuits ou ultra-économiques)
+1. Récupérez une clé sur [openrouter.ai](https://openrouter.ai).
+2. Utilisez des modèles gratuits comme `meta-llama/llama-3.2-3b-instruct:free` ou des modèles vision très économiques.
+
+### Option D : Voix & TTS
+- **Web Speech API (Par défaut)** : Totalement gratuite, aucune latence, utilise les voix synthétiques féminines installées sur votre OS/navigateur.
+- **Serveur TTS Local GPU** : Compatible avec **XTTS-v2** ou **AllTalk TTS** (`http://host.docker.internal:8020/v1/audio/speech`).
+
+---
+
+## 📱 Utilisation Mobile (PWA)
+
+- **Sur iPhone / iPad (Safari)** : Appuyez sur l'icône de partage ⬆️ > *« Sur l'écran d'accueil »*.
+- **Sur Android (Chrome)** : Appuyez sur le bouton *« Installer l'application »*.
+- L'application s'affiche en véritable plein écran natif avec barre d'onglets optimisée pour une utilisation au pouce.
+
+---
+
+## 📄 Licence
+Ce projet est distribué sous licence Apache-2.0.

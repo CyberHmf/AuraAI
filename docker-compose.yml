@@ -1,0 +1,27 @@
+services:
+  aura-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aura-ai
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORT:-9876}:9876"
+    environment:
+      - NODE_ENV=production
+      - PORT=9876
+      # Optionnel mais fortement recommandé si exposé derrière un reverse proxy :
+      - AUTH_TOKEN=${AUTH_TOKEN:-}
+      # Optionnel : si vous souhaitez utiliser l'API Gemini directement
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    # Permet au conteneur d'accéder aux services locaux tournant sur la machine hôte (Ollama, ComfyUI, TTS)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+# Optional: attach to an existing external Docker network if needed
+#    networks:
+#      - ai_roleplay_net
+# networks:
+#   ai_roleplay_net:
+#     external: true
