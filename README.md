@@ -6,6 +6,10 @@
   <img src="./public/logo.png" alt="Aura AI Logo" width="112" />
 </p>
 
+<p align="center">
+  <img src="./docs/demo-en.gif" alt="Aura AI demo: persona builder, chat, selfies, token memory, diary" width="800" />
+</p>
+
 **Aura AI** is a privacy-first, ultra-lightweight **AI Companion & Girlfriend Progressive Web App (PWA)** built with React, TypeScript, Tailwind CSS, and an Express/Node.js backend.  
 It is engineered from the ground up to solve **massive token bloat** in roleplay/companion apps using a compact *JanitorAI / World-Info* JSON memory card architecture, while delivering **consistent facial identity across selfies**, **multimodal vision**, **dual SMS & In Real Life (IRL) chat modes**, **voice notes**, **live weather/time/news awareness**, and **full local or cloud BYOK (Bring Your Own Key) freedom**.
 

@@ -2,6 +2,10 @@
 
 > 🌐 **[English Version (README.md)](./README.md)** · **Version Française (actuelle)**
 
+<p align="center">
+  <img src="./docs/demo-fr.gif" alt="Démo d'Aura AI : persona, chat, selfies, mémoire tokens, journal" width="800" />
+</p>
+
 > **Application Web Progressive (PWA) de nouvelle génération.**  
 > Spécialement conçue pour **résoudre le problème de surconsommation monstrueuse de tokens** grâce à une architecture mémoire ultra-légère inspirée de *JanitorAI / World-Info*, avec **Vision multimodale**, **selfies au visage constant (*Face Anchor*)**, **détecteur de jalousie interactif**, **notes vocales WhatsApp animées**, **synthèse vocale TTS (Web Speech gratuite & GPU Local)** et **ancrage dans le monde réel (météo & actualités en direct)**.
 
