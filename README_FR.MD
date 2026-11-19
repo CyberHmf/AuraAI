@@ -16,13 +16,15 @@
 | Critère | Her&Him Classique | Aura AI (Cette Application) |
 | :--- | :--- | :--- |
 | **Mémoire par tour** | Historique brut complet + logs verbeux | **Carte JSON JanitorAI compacte (~40 tokens)** |
-| **Historique actif** | Illimité ou mal tronqué (5 000 - 15 000 tok) | **Fenêtre glissante optimisée (4 à 12 messages = ~200 tok)** |
-| **Total par échange** | **~15 000 tokens** | **~450 tokens** |
-| **Économie moyenne** | Référence (0%) | **~95% de tokens économisés !** |
+| **Historique actif** | Illimité ou mal tronqué (5 000 - 15 000 tok) | **Fenêtre glissante configurable (4 à 16 messages)** |
+| **Total par échange** | Augmente à chaque message (tout l'historique est renvoyé) | **Reste à peu près constant : ~1 900 tokens dans notre conversation test (fenêtre de 8 messages) contre ~3 500 pour l'historique brut** |
+| **Économie observée** | Référence (0%) | **Environ moitié moins sur notre exemple, et l'écart grandit avec la longueur de la conversation** |
 | **Coût d'usage** | Abonnement payant ou facture d'API élevée | **100% Gratuit possible (Ollama local, Groq, Web Speech)** |
 | **Vision** | Limitée ou payante | **Multimodale native (Ollama Vision, Groq, Gemini)** |
 | **Visage des selfies** | Souvent aléatoire et changeant | **Visage constant verrouillé via *Face Anchor Prompt*** |
 | **Mobile** | Souvent desktop-only | **PWA installable plein écran iOS & Android** |
+
+> 📊 Chiffres mesurés sur une conversation test avec la fenêtre par défaut de 8 messages. L'économie réelle dépend de la taille du persona, de la longueur des messages et de la fenêtre choisie.
 
 ---
 

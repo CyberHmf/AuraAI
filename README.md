@@ -21,11 +21,13 @@ It is engineered from the ground up to solve **massive token bloat** in roleplay
 | :--- | :--- | :--- |
 | **Per-Turn Memory** | Full raw history + verbose logs | **Compact JanitorAI JSON card (~40 tokens)** |
 | **Active Chat Window** | Unlimited / poorly truncated (5,000–15,000 tok) | **Configurable sliding window (4–16 messages)** |
-| **Average Cost per Turn** | ~15,000+ tokens | **~450–1,800 tokens (~95% token savings)** |
+| **Average Cost per Turn** | Grows with every message (the whole history is resent) | **Stays roughly flat: ~1,900 tokens in our sample chat (8-message window) vs ~3,500 for the raw history, about half — and the gap widens as the conversation grows** |
 | **Model & API Freedom** | Vendor lock-in or expensive subscriptions | **100% BYOK: Ollama Local, Groq, OpenRouter, NanoGPT, Gemini** |
 | **Image Consistency** | Random face on every generation | **Locked face & hair identity via Face Anchor + Img2Img crop** |
 | **Data Persistence** | Browser-only or opaque cloud DB | **Local server disk persistence (`data/`) + safe client storage** |
 | **Mobile Experience** | Desktop-oriented web UI | **Installable Full-Screen PWA (iOS & Android, zero Service Worker)** |
+
+> 📊 Figures measured on a sample conversation with the default 8-message window. Your savings depend on your persona size, message length and chosen window.
 
 ---
 
