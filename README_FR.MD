@@ -2,6 +2,8 @@
 
 > 🌐 **[English Version (README.md)](./README.md)** · **Version Française (actuelle)**
 
+[![CI](https://github.com/CyberHmf/AuraAI/actions/workflows/ci.yml/badge.svg)](https://github.com/CyberHmf/AuraAI/actions/workflows/ci.yml)
+
 <p align="center">
   <img src="./docs/demo-fr.gif" alt="Démo d'Aura AI : persona, chat, selfies, mémoire tokens, journal" width="800" />
 </p>

@@ -2,6 +2,8 @@
 
 > 🌐 **English (current)** · **[Version Française (README_FR.MD)](./README_FR.MD)**
 
+[![CI](https://github.com/CyberHmf/AuraAI/actions/workflows/ci.yml/badge.svg)](https://github.com/CyberHmf/AuraAI/actions/workflows/ci.yml)
+
 <p align="center">
   <img src="./public/logo.png" alt="Aura AI Logo" width="112" />
 </p>
