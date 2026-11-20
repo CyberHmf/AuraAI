@@ -18,7 +18,7 @@ import {
 } from './services/memoryService';
 import { sendChatMessage } from './services/llmService';
 import { generateSelfie } from './services/selfieService';
-import { speakMessage } from './services/speechService';
+import { speakMessage, stopSpeaking } from './services/speechService';
 
 import { TopBar } from './components/TopBar';
 import { ChatView } from './components/ChatView';
@@ -656,6 +656,137 @@ export default function App() {
     }
   };
 
+  // Supprime une image générée de l'Album Privé et du disque serveur (sans jamais toucher à l'avatar du profil)
+  const removeSelfieFromGalleryAndDisk = (selfie?: SelfieItem) => {
+    if (!selfie) return;
+    setSelfies(prev => {
+      const next = prev.filter(s => s.id !== selfie.id && s.url !== selfie.url);
+      safeStorage.setItem('aura_selfies', JSON.stringify(next));
+      return next;
+    });
+    if (selfie.url && selfie.url.startsWith('/api/images/') && selfie.url !== girlfriend.appearance.avatarUrl) {
+      const filename = selfie.url.replace('/api/images/', '').split('?')[0];
+      if (filename) {
+        fetch(`/api/images/${encodeURIComponent(filename)}`, { method: 'DELETE' }).catch(() => {});
+      }
+    }
+  };
+
+  // Cœur partagé entre l'envoi normal et la régénération ("seconde passe") d'une réponse de la compagne
+  const generateGirlfriendReply = async (
+    userMsg: ChatMessage,
+    historyBeforeUserMsg: ChatMessage[],
+    currentMemory: LightweightMemory,
+    allowAutoDiary: boolean
+  ) => {
+    const text = userMsg.text;
+    const response = await sendChatMessage(
+      text,
+      historyBeforeUserMsg,
+      girlfriend,
+      user,
+      currentMemory,
+      context,
+      llmConfig,
+      userMsg.userImage,
+      chatMode
+    );
+
+    // Nettoyer d'éventuelles balises factices *selfie* / [selfie] si le LLM en a écrit AVANT de générer l'image
+    const cleanedResponseText = response.text
+      .replace(/(\*|\[\s*)\s*(?:selfie|photo|envoie\s+une?\s+(?:photo|selfie)|prend\s+un\s+selfie)\s*(\*|\])/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim() || response.text;
+
+    // Détection naturelle et fiable d'une demande explicite de photo / selfie / apparence dans le chat
+    const normalizedText = text.trim();
+    const isExplicitSelfieRequest =
+      /\b(envoie|envois|fais|prends|montre|montres|partage|laisse(?:-moi)?\s+voir|fais(?:-moi)?\s+voir)(?:-moi|\s+moi|-nous|\s+me)?\b.{0,45}\b(photo|selfie|cliché|portrait|toi|visage|tête|bouille|tenue|look)\b/i.test(normalizedText) ||
+      /(?:^|[\s,'"(])(?:à\s+quoi\s+tu\s+ressembles?|voir\s+à\s+quoi\s+tu\s+ressembles?|comment\s+tu\s+(?:es\s+habillée|t'habilles|ressembles))\b/i.test(normalizedText) ||
+      (/\b(?:une?\s+(?:petite?\s+)?(?:photo|selfie)|un\s+(?:autre\s+|nouveau\s+|petit\s+)?selfie)\b/i.test(normalizedText) &&
+        /(?:\b(?:envoie|envois|fais|prends|montre|montres|veux|voudrais|peux|pourrais|stp)\b|s'il\s+te\s+pla[îi]t|\?)/i.test(normalizedText));
+
+    // 1. On attend la réponse de la Girlfriend pour injecter SA description (tenue, coiffure, décor, action) dans le prompt image !
+    let selfieItem: SelfieItem | undefined = undefined;
+    if (isExplicitSelfieRequest && selfieConfig.enablePhotoRequests && !response.isError) {
+      setIsGeneratingSelfie(true);
+      try {
+        selfieItem = await generateSelfie(girlfriend, selfieConfig, {
+          scenarioTitle: 'Selfie sur demande',
+          scenarioSnippet: `user asked: "${normalizedText}" — candid authentic selfie matching her exact current description`,
+          girlfriendReply: cleanedResponseText,
+        }, llmConfig);
+        setSelfies(prev => [selfieItem!, ...prev]);
+      } catch (err) {
+        console.warn('Erreur génération selfie sur demande:', err);
+      } finally {
+        setIsGeneratingSelfie(false);
+      }
+    }
+
+    // Check if user requested a voice note, audio or whisper
+    const wantsVoiceNote = /vocal|voix|audio|chuchote|murmure|note vocale|dis-le|entendre/i.test(text);
+    let voiceNoteItem = undefined;
+    if (wantsVoiceNote) {
+      const waveform = Array.from({ length: 28 }, (_, i) => {
+        return Math.floor(Math.sin(i * 0.45) * 35 + 50 + (Math.random() * 25));
+      });
+
+      voiceNoteItem = {
+        durationSeconds: Math.min(25, Math.max(5, Math.round(cleanedResponseText.length / 15))),
+        transcript: cleanedResponseText,
+        waveform,
+        isWhisper: /chuchote|murmure|secret|nuit|lit/i.test(text),
+      };
+    }
+
+    const gfMsg: ChatMessage = {
+      id: `msg-gf-${Date.now()}`,
+      sender: 'girlfriend',
+      text: cleanedResponseText,
+      timestamp: `${new Date().getHours().toString().padStart(2, '0')}:${new Date().getMinutes().toString().padStart(2, '0')}`,
+      selfie: selfieItem,
+      voiceNote: voiceNoteItem,
+      reactionMood: currentMemory.jealousyState?.isJealous ? 'jealous' : undefined,
+      tokenCountEstimate: response.tokensUsedEstimate,
+      isError: response.isError,
+    };
+
+    setMessages(prev => {
+      const next = response.isError
+        ? prev.map(m => (m.id === userMsg.id ? { ...m, isError: true } : m))
+        : prev.map(m => (m.id === userMsg.id ? { ...m, isError: false } : m));
+      return [...next, gfMsg];
+    });
+
+    // Automatic diary update every 6 messages (uniquement lors d'un nouvel échange)
+    const totalMessages = historyBeforeUserMsg.length + 2;
+    if (allowAutoDiary && totalMessages > 0 && totalMessages % 6 === 0) {
+      const snippet = text.slice(0, 40);
+      const autoDiaryEntry = {
+        id: `entry-${Date.now()}`,
+        date: 'Aujourd’hui',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        title: `Pensée complice · Affinité ${currentMemory.affectionScore}%`,
+        content: `On a eu une super conversation aujourd'hui. ${snippet ? `Il me parlait de "${snippet}".` : ''} J'adore nos moments ensemble, il me fait toujours sourire.`,
+        mood: currentMemory.affectionScore > 70 ? 'Amoureuse & joyeuse' : 'Tendre & complice',
+      };
+      setMemory(prev => {
+        const updated = {
+          ...prev,
+          diaryEntries: [autoDiaryEntry, ...(prev.diaryEntries || [])].slice(0, 15),
+        };
+        safeStorage.setItem('aura_memory', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    // Auto-play voice if configured
+    if (voiceConfig.autoPlay && !response.isError) {
+      speakMessage(response.text, girlfriend, voiceConfig);
+    }
+  };
+
   // Send Chat Message Flow (with optional multimodal user image vision)
   const handleSendMessage = async (text: string, userImage?: string) => {
     const now = new Date();
@@ -669,8 +800,8 @@ export default function App() {
       timestamp: timeStr,
     };
 
-    const newHistory = [...messages, userMsg];
-    setMessages(newHistory);
+    const historyBeforeUserMsg = messages;
+    setMessages([...historyBeforeUserMsg, userMsg]);
     setIsTyping(true);
 
     // Extract facts asynchronously into memory card with photo awareness & jealousy detection
@@ -682,111 +813,74 @@ export default function App() {
     }
 
     try {
-      const response = await sendChatMessage(
-        text,
-        messages,
-        girlfriend,
-        user,
-        currentMemory,
-        context,
-        llmConfig,
-        userImage,
-        chatMode
-      );
-
-      // Détection naturelle et fiable d'une demande explicite de photo / selfie / apparence dans le chat
-      const normalizedText = text.trim();
-      const isExplicitSelfieRequest =
-        /\b(envoie|envois|fais|prends|montre|montres|partage|laisse(?:-moi)?\s+voir|fais(?:-moi)?\s+voir)(?:-moi|\s+moi|-nous|\s+me)?\b.{0,45}\b(photo|selfie|cliché|portrait|toi|visage|tête|bouille|tenue|look)\b/i.test(normalizedText) ||
-        /(?:^|[\s,'"(])(?:à\s+quoi\s+tu\s+ressembles?|voir\s+à\s+quoi\s+tu\s+ressembles?|comment\s+tu\s+(?:es\s+habillée|t'habilles|ressembles))\b/i.test(normalizedText) ||
-        (/\b(?:une?\s+(?:petite?\s+)?(?:photo|selfie)|un\s+(?:autre\s+|nouveau\s+|petit\s+)?selfie)\b/i.test(normalizedText) &&
-          /(?:\b(?:envoie|envois|fais|prends|montre|montres|veux|voudrais|peux|pourrais|stp)\b|s'il\s+te\s+pla[îi]t|\?)/i.test(normalizedText));
-
-      let selfieItem: SelfieItem | undefined = undefined;
-      if (isExplicitSelfieRequest && selfieConfig.enablePhotoRequests) {
-        setIsGeneratingSelfie(true);
-        try {
-          selfieItem = await generateSelfie(girlfriend, selfieConfig, {
-            scenarioTitle: 'Selfie sur demande',
-            scenarioSnippet: `user asked: "${normalizedText}" — candid authentic selfie showing her look and current mood`,
-          }, llmConfig);
-          setSelfies(prev => [selfieItem!, ...prev]);
-        } catch (err) {
-          console.warn('Erreur génération selfie sur demande:', err);
-        } finally {
-          setIsGeneratingSelfie(false);
-        }
-      }
-
-      // Nettoyer d'éventuelles balises factices *selfie* / [selfie] si le LLM en a écrit
-      const cleanedResponseText = response.text
-        .replace(/(\*|\[\s*)\s*(?:selfie|photo|envoie\s+une?\s+(?:photo|selfie)|prend\s+un\s+selfie)\s*(\*|\])/gi, '')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim() || response.text;
-
-      // Check if user requested a voice note, audio or whisper
-      const wantsVoiceNote = /vocal|voix|audio|chuchote|murmure|note vocale|dis-le|entendre/i.test(text);
-      let voiceNoteItem = undefined;
-      if (wantsVoiceNote) {
-        const waveform = Array.from({ length: 28 }, (_, i) => {
-          return Math.floor(Math.sin(i * 0.45) * 35 + 50 + (Math.random() * 25));
-        });
-
-        voiceNoteItem = {
-          durationSeconds: Math.min(25, Math.max(5, Math.round(cleanedResponseText.length / 15))),
-          transcript: cleanedResponseText,
-          waveform,
-          isWhisper: /chuchote|murmure|secret|nuit|lit/i.test(text),
-        };
-      }
-
-      const gfMsg: ChatMessage = {
-        id: `msg-gf-${Date.now()}`,
-        sender: 'girlfriend',
-        text: cleanedResponseText,
-        timestamp: `${new Date().getHours().toString().padStart(2, '0')}:${new Date().getMinutes().toString().padStart(2, '0')}`,
-        selfie: selfieItem,
-        voiceNote: voiceNoteItem,
-        reactionMood: currentMemory.jealousyState?.isJealous ? 'jealous' : undefined,
-        tokenCountEstimate: response.tokensUsedEstimate,
-        isError: response.isError,
-      };
-
-      setMessages(prev => {
-        const next = response.isError
-          ? prev.map(m => (m.id === userMsg.id ? { ...m, isError: true } : m))
-          : prev;
-        return [...next, gfMsg];
-      });
-
-      // Automatic diary update every 6 messages
-      const totalMessages = messages.length + 2;
-      if (totalMessages > 0 && totalMessages % 6 === 0) {
-        const snippet = text.slice(0, 40);
-        const autoDiaryEntry = {
-          id: `entry-${Date.now()}`,
-          date: 'Aujourd’hui',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          title: `Pensée complice · Affinité ${currentMemory.affectionScore}%`,
-          content: `On a eu une super conversation aujourd'hui. ${snippet ? `Il me parlait de "${snippet}".` : ''} J'adore nos moments ensemble, il me fait toujours sourire.`,
-          mood: currentMemory.affectionScore > 70 ? 'Amoureuse & joyeuse' : 'Tendre & complice',
-        };
-        setMemory(prev => {
-          const updated = {
-            ...prev,
-            diaryEntries: [autoDiaryEntry, ...(prev.diaryEntries || [])].slice(0, 15),
-          };
-          safeStorage.setItem('aura_memory', JSON.stringify(updated));
-          return updated;
-        });
-      }
-
-      // Auto-play voice if configured
-      if (voiceConfig.autoPlay) {
-        speakMessage(response.text, girlfriend, voiceConfig);
-      }
+      await generateGirlfriendReply(userMsg, historyBeforeUserMsg, currentMemory, true);
     } catch (err) {
       console.error('Chat error:', err);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  // Supprimer un message de l'AI Girlfriend (et son image générée si présente)
+  const handleDeleteMessage = (msgId: string) => {
+    const targetMsg = messages.find(m => m.id === msgId);
+    if (!targetMsg || targetMsg.sender === 'user') return;
+
+    stopSpeaking();
+    if (targetMsg.selfie) {
+      removeSelfieFromGalleryAndDisk(targetMsg.selfie);
+    }
+    setMessages(prev => {
+      const next = prev.filter(m => m.id !== msgId);
+      safeStorage.setItem('aura_chat_messages', JSON.stringify(next));
+      return next;
+    });
+    logger.info('LLM_CHAT', 'Message de la compagne supprimé', {
+      msgId,
+      hadSelfie: Boolean(targetMsg.selfie),
+    });
+  };
+
+  // Seconde passe : supprime la réponse actuelle (et son image) et régénère une réponse au dernier message utilisateur
+  const handleReloadMessage = async (msgId: string) => {
+    if (isTyping || isGeneratingSelfie) return;
+    const targetIdx = messages.findIndex(m => m.id === msgId);
+    if (targetIdx === -1) return;
+    const targetMsg = messages[targetIdx];
+    if (targetMsg.sender !== 'girlfriend') return;
+
+    let userIdx = -1;
+    for (let i = targetIdx - 1; i >= 0; i--) {
+      if (messages[i].sender === 'user') {
+        userIdx = i;
+        break;
+      }
+    }
+    if (userIdx === -1) return;
+
+    const lastUserMsg = messages[userIdx];
+    const historyBeforeUserMsg = messages.slice(0, userIdx);
+
+    stopSpeaking();
+    if (targetMsg.selfie) {
+      removeSelfieFromGalleryAndDisk(targetMsg.selfie);
+    }
+
+    // Retire la réponse à régénérer immédiatement pour afficher l'indicateur de frappe
+    const remainingMessages = messages.filter(m => m.id !== msgId);
+    setMessages(remainingMessages);
+    safeStorage.setItem('aura_chat_messages', JSON.stringify(remainingMessages));
+
+    logger.info('LLM_CHAT', 'Seconde passe : régénération de la réponse au dernier message utilisateur', {
+      replacedMsgId: msgId,
+      hadSelfie: Boolean(targetMsg.selfie),
+    });
+
+    setIsTyping(true);
+    try {
+      await generateGirlfriendReply(lastUserMsg, historyBeforeUserMsg, memory, false);
+    } catch (err) {
+      console.error('Reload message error:', err);
     } finally {
       setIsTyping(false);
     }
@@ -866,16 +960,21 @@ export default function App() {
           }}
           onOpenReset={() => setIsResetModalOpen(true)}
           isTyping={isTyping}
+          isGeneratingSelfie={isGeneratingSelfie}
           context={context}
           activeTokens={tokenStats.activeTurnTokens}
           tokensSaved={tokenStats.tokensSaved}
           voiceConfig={voiceConfig}
+          selfieConfig={selfieConfig}
+          llmConfig={llmConfig}
           onUpdateGreeting={(newGreeting) => {
             const updatedGf = { ...girlfriend, initialGreeting: newGreeting };
             setGirlfriend(updatedGf);
             safeStorage.setItem('aura_girlfriend', JSON.stringify(updatedGf));
             setMessages(prev => prev.map(m => (m.id === 'msg-welcome' || m.id.startsWith('msg-welcome')) ? { ...m, text: newGreeting } : m));
           }}
+          onDeleteMessage={handleDeleteMessage}
+          onReloadMessage={handleReloadMessage}
         />
       </main>
 

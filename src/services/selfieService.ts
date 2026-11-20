@@ -7,6 +7,7 @@ export interface GenerateSelfieOptions {
   scenarioSnippet: string;
   customOutfit?: string;
   captionText?: string;
+  girlfriendReply?: string;
 }
 
 /**
@@ -212,6 +213,27 @@ const FRENCH_OUTFIT_AND_TRAITS_DICT: Array<[RegExp, string]> = [
   [/\bdans\b/gi, 'in'],
   [/\bdevant\b/gi, 'in front of'],
   [/\bsous\b/gi, 'under'],
+  [/\bpyjamas?\b/gi, 'cozy pajamas'],
+  [/\bnuisette\b/gi, 'silk camisole nightgown'],
+  [/\bpeignoir\b/gi, 'soft plush bathrobe'],
+  [/\bserviette\b/gi, 'bath towel'],
+  [/\bjogging\b/gi, 'comfy joggers and hoodie'],
+  [/\btasse\s+(?:de\s+)?café\b/gi, 'coffee mug'],
+  [/\bcafé\s+à\s+la\s+main\b/gi, 'holding a warm coffee mug in hand'],
+  [/\bà\s+la\s+main\b/gi, 'in hand'],
+  [/\bcheveux\s+en\s+bataille\b/gi, 'messy tousled bedhead hair'],
+  [/\ben\s+bataille\b/gi, 'messy tousled'],
+  [/\bdécoiffée?s?\b/gi, 'tousled messy'],
+  [/\bmouillée?s?\b/gi, 'damp wet'],
+  [/\btout\s+gris\b/gi, 'overcast gray cloudy'],
+  [/\bderrière\b/gi, 'outside behind'],
+  [/\bcouette\b/gi, 'fluffy duvet'],
+  [/\bplaid\b/gi, 'cozy throw blanket'],
+  [/\bthé\b/gi, 'hot tea'],
+  [/\bappartement\b/gi, 'cozy apartment'],
+  [/\bcuisine\b/gi, 'kitchen'],
+  [/\bmaison\b/gi, 'home'],
+  [/\bcosy\b/gi, 'cozy'],
 ];
 
 export function translateOutfitToEnglish(outfit?: string): string {
@@ -222,9 +244,73 @@ export function translateOutfitToEnglish(outfit?: string): string {
     'Robe élégante en lin pastel': 'elegant pastel linen sundress',
     'Sweat d’intérieur oversize cozy': 'cozy oversized knit loungewear sweatshirt',
     "Sweat d'intérieur oversize cozy": 'cozy oversized knit loungewear sweatshirt',
+    'Pyjama cosy & débardeur': 'cozy soft homewear pajamas and tank top',
+    'Pyjama doux d’intérieur': 'soft comfortable indoor pajamas',
+    "Pyjama doux d'intérieur": 'soft comfortable indoor pajamas',
   };
   if (presetMap[raw]) return presetMap[raw];
   return applyFrenchTokenDictionary(raw, FRENCH_OUTFIT_AND_TRAITS_DICT);
+}
+
+/**
+ * Extracts explicit clothing, hair state, and visual scene details from the girlfriend's chat reply
+ * so the generated selfie stays 100% visually coherent with what she just described.
+ */
+function extractVisualOverridesFromReply(replyText?: string, sceneText?: string): {
+  outfitOverride?: string;
+  hairStyleOverride?: string;
+  cleanedReplyScene: string;
+} {
+  const rawReply = (replyText || '').trim();
+  const combinedSource = `${rawReply} ${sceneText || ''}`.trim();
+
+  let outfitOverride: string | undefined;
+  const outfitSource = rawReply || (sceneText || '').trim();
+  if (outfitSource) {
+    if (/\bpyjamas?\b/i.test(outfitSource)) {
+      const detailedMatch = outfitSource.match(/\b(pyjama[^.!?\n,;]{0,45})/i);
+      outfitOverride = detailedMatch ? detailedMatch[1].trim() : 'Pyjama cosy d’intérieur';
+    } else if (/\bnuisette\b/i.test(outfitSource)) {
+      const detailedMatch = outfitSource.match(/\b(nuisette[^.!?\n,;]{0,40})/i);
+      outfitOverride = detailedMatch ? detailedMatch[1].trim() : 'Nuisette en soie délicate';
+    } else if (/\bpeignoir\b/i.test(outfitSource)) {
+      outfitOverride = 'Peignoir doux d’intérieur';
+    } else if (/\bserviette\b/i.test(outfitSource)) {
+      outfitOverride = 'Enroulée dans une serviette de bain';
+    } else if (/\b(?:jogging|survêtement)\b/i.test(outfitSource)) {
+      outfitOverride = 'Jogging confortable & haut détente';
+    } else if (/\b(?:tenue de sport|legging|brassière|sportswear)\b/i.test(outfitSource)) {
+      outfitOverride = 'Tenue de sport & fitness';
+    } else if (/\b(?:sweat|hoodie)\b/i.test(outfitSource)) {
+      outfitOverride = 'Sweat d’intérieur oversize cozy';
+    } else if (/\b(?:robe\s+d['’]?intérieur|robe\s+noire|robe\s+légère|petite\s+robe|en\s+robe)\b/i.test(outfitSource)) {
+      const robeMatch = outfitSource.match(/\b(robe[^.!?\n,;]{0,35})/i);
+      outfitOverride = robeMatch ? robeMatch[1].trim() : 'Robe légère';
+    } else if (/\b(?:maillot de bain|bikini)\b/i.test(outfitSource)) {
+      outfitOverride = 'Maillot de bain';
+    }
+  }
+
+  let hairStyleOverride: string | undefined;
+  if (/\b(?:cheveux\s+en\s+bataille|cheveux\s+décoiffés|toute\s+décoiffée|tête\s+du\s+matin)\b/i.test(combinedSource)) {
+    hairStyleOverride = 'messy tousled morning bedhead hair';
+  } else if (/\b(?:cheveux\s+mouillés|cheveux\s+humides)\b/i.test(combinedSource)) {
+    hairStyleOverride = 'damp wet just-showered hair';
+  } else if (/\bchignon\b/i.test(combinedSource)) {
+    hairStyleOverride = 'casual loose messy bun updo';
+  } else if (/\bqueue de cheval\b/i.test(combinedSource)) {
+    hairStyleOverride = 'casual ponytail';
+  }
+
+  // Keep action descriptions (*...*) as plain text while cleaning emojis and conversational tail questions
+  const cleanedReplyScene = rawReply
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+    .replace(/\b(?:tu es sûr de vouloir voir ça|tu veux voir|ça te pla[îi]t|avec plaisir,? mais tu vas être déçu)\b[^.?!]*[.?!]?/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { outfitOverride, hairStyleOverride, cleanedReplyScene };
 }
 
 export function translateCustomTraitsToEnglish(customTraits?: string): string {
@@ -291,21 +377,22 @@ export function constructSelfiePrompt(
   aspectRatio: '3:4' | '9:16' | '1:1' = '3:4'
 ): { prompt: string; negativePrompt: string } {
   const { distinguishingFeatures, currentOutfitStyle, bodyProfile } = girlfriend.appearance;
-  const outfit = translateOutfitToEnglish(options.customOutfit || currentOutfitStyle);
+  const overrides = extractVisualOverridesFromReply(options.girlfriendReply, options.scenarioSnippet);
+  const effectiveOutfitRaw = options.customOutfit || overrides.outfitOverride || currentOutfitStyle;
+  const outfit = translateOutfitToEnglish(effectiveOutfitRaw);
 
   const ageDescriptor = getAgeFacialDescriptor(girlfriend.age);
   const morphologyDetails = translateMorphologyToEnglish(bodyProfile);
-  const faceFeatures = translateFaceFeaturesToEnglish(girlfriend.appearance);
+  const faceFeatures = translateFaceFeaturesToEnglish(girlfriend.appearance, overrides.hairStyleOverride);
   const featuresText = translateDistinguishingFeatures(distinguishingFeatures);
-  const personalityAura = translatePersonalityToVisualAura(girlfriend);
 
-  // Translate French scene snippet safely via local dictionary
-  const translatedScene = applyFrenchTokenDictionary(
-    (options.scenarioSnippet || 'candid authentic smile into phone camera').trim(),
-    FRENCH_OUTFIT_AND_TRAITS_DICT
-  );
+  // Translate French scene snippet (and girlfriend's own reply description when available)
+  const rawSceneSource = overrides.cleanedReplyScene
+    ? `${overrides.cleanedReplyScene}${options.scenarioSnippet ? `, ${options.scenarioSnippet}` : ''}`
+    : (options.scenarioSnippet || 'candid authentic smile into phone camera').trim();
+  const translatedScene = applyFrenchTokenDictionary(rawSceneSource, FRENCH_OUTFIT_AND_TRAITS_DICT);
 
-  // Put exact current face/hair/eyes/outfit FIRST so edits always win!
+  // Put exact current face/hair/eyes + current scene/outfit FIRST so visual coherence always wins!
   const identityCore = `Authentic raw candid photograph of ${girlfriend.age}-year-old woman named ${girlfriend.name}, ${ageDescriptor}, ${faceFeatures}`;
   const faceDetails = [
     identityCore,
@@ -313,13 +400,21 @@ export function constructSelfiePrompt(
   ].filter(Boolean).join(', ');
 
   const sceneDetails = `${translatedScene}, wearing ${outfit}, tastefully clothed`;
+  const isSpecificIndoorOrOverrideScene = Boolean(
+    overrides.cleanedReplyScene ||
+    options.customOutfit ||
+    /\b(pyjama|lit|bed|couette|duvet|douche|shower|towel|serviette|gym|workout|cuisine|kitchen|chambre|bedroom|fenêtre|window|maison|home|canapé|sofa)\b/i.test(rawSceneSource)
+  );
+  // Avoid letting unrelated hobbies (like "Parisian cafe") pull an indoor pajama selfie into a sunny outdoor cafe
+  const personalityAura = isSpecificIndoorOrOverrideScene ? '' : translatePersonalityToVisualAura(girlfriend);
+
   const framing = aspectRatio === '3:4'
     ? 'candid RAW upper-body medium portrait selfie, 3:4 ratio'
     : 'candid vertical smartphone selfie photo';
-  const cameraDetails = `realistic photograph, ${framing}, authentic candid glance, natural daylight bokeh, realistic skin texture with natural pores, 35mm film photography style, sharp eye focus`;
+  const cameraDetails = `realistic photograph, ${framing}, authentic candid glance, natural lighting, realistic skin texture with natural pores, 35mm film photography style, sharp eye focus`;
 
-  const backgroundOverrideInstruction = 'Preserve strictly and exclusively the face, facial features, eyes, hair color, and likeness from the reference portrait photo. IGNORE and completely replace the background, environment, and clothing of the reference image, adopting the new clothing and setting specified in this prompt.';
-  const prompt = [backgroundOverrideInstruction, faceDetails, morphologyDetails, personalityAura, sceneDetails, cameraDetails].filter(Boolean).join(', ');
+  const backgroundOverrideInstruction = 'Preserve strictly and exclusively the face, facial features, eyes, hair color, and likeness from the reference portrait photo. IGNORE and completely replace the background, environment, and clothing of the reference image, adopting ONLY the clothing and setting specified in this prompt.';
+  const prompt = [backgroundOverrideInstruction, faceDetails, sceneDetails, morphologyDetails, personalityAura, cameraDetails].filter(Boolean).join(', ');
 
   return { prompt, negativePrompt: 'deformed, cartoon, anime, illustration, 3d render, plastic skin, doll, extra fingers, disfigured, blurry face, carrying over bar background' };
 }
@@ -397,7 +492,10 @@ function translateMorphologyToEnglish(bodyProfile?: GirlfriendPersona['appearanc
   return [eth, hgt, bdy, bst, att, sty, custom].filter(Boolean).join(', ');
 }
 
-function translateFaceFeaturesToEnglish(appearance: GirlfriendPersona['appearance']): string {
+function translateFaceFeaturesToEnglish(
+  appearance: GirlfriendPersona['appearance'],
+  hairStyleOverride?: string
+): string {
   const eyeMap: Record<string, string> = {
     'Vert émeraude': 'vivid emerald green eyes',
     'Vert émeraude pétillant': 'bright sparkling emerald green eyes',
@@ -480,7 +578,7 @@ function translateFaceFeaturesToEnglish(appearance: GirlfriendPersona['appearanc
   const rawSkin = (appearance.skinTone || '').trim();
 
   const eye = eyeMap[rawEye] || applyFrenchTokenDictionary(rawEye || 'brown eyes', FRENCH_COLOR_AND_STYLE_DICT);
-  const hStyle = hairStyleMap[rawStyle] || applyFrenchTokenDictionary(rawStyle || 'wavy hair', FRENCH_COLOR_AND_STYLE_DICT);
+  const hStyle = hairStyleOverride || hairStyleMap[rawStyle] || applyFrenchTokenDictionary(rawStyle || 'wavy hair', FRENCH_COLOR_AND_STYLE_DICT);
   const hColor = hairColorMap[rawColor] || applyFrenchTokenDictionary(rawColor || 'chestnut hair', FRENCH_COLOR_AND_STYLE_DICT);
   const skin = skinToneMap[rawSkin] || applyFrenchTokenDictionary(rawSkin || 'natural skin', FRENCH_COLOR_AND_STYLE_DICT);
 
@@ -950,7 +1048,8 @@ export async function generateSelfie(
   const timeFormatted = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
   const faceSeed = getPersonaFaceSeed(girlfriend);
   const ratio: '3:4' | '9:16' | '1:1' = config.aspectRatio === '1:1' ? '1:1' : config.aspectRatio === '9:16' ? '9:16' : '3:4';
-  const activeOutfit = options.customOutfit || girlfriend.appearance.currentOutfitStyle;
+  const overrides = extractVisualOverridesFromReply(options.girlfriendReply, options.scenarioSnippet);
+  const activeOutfit = options.customOutfit || overrides.outfitOverride || girlfriend.appearance.currentOutfitStyle;
 
   let finalUrl = '';
   const finalTitle = options.scenarioTitle;
@@ -977,7 +1076,7 @@ export async function generateSelfie(
     };
   }
 
-  // 0. Compile clean English selfie prompt from ALL current persona fields + translated French scene/outfit
+  // 0. Compile clean English selfie prompt AFTER receiving girlfriendReply so scene, outfit & props match her message 100%
   const { prompt: fallbackPrompt } = constructSelfiePrompt(girlfriend, options, ratio);
   let prompt = fallbackPrompt;
   let translatedVia = 'dictionnaire-local';
@@ -994,20 +1093,22 @@ export async function generateSelfie(
           relationshipStatus: girlfriend.relationshipStatus,
           occupation: girlfriend.occupation,
           tone: girlfriend.speechStyle?.tone,
-          soulTraits: girlfriend.soulTraits,
+          soulTraits: overrides.cleanedReplyScene ? [] : girlfriend.soulTraits,
           ethnicity: girlfriend.appearance.bodyProfile?.ethnicity,
           height: girlfriend.appearance.bodyProfile?.height,
           bodyType: girlfriend.appearance.bodyProfile?.bodyType,
           bustSize: girlfriend.appearance.bodyProfile?.bustSize,
           generalAttitude: girlfriend.appearance.bodyProfile?.generalAttitude,
           mainStyle: girlfriend.appearance.bodyProfile?.mainStyle,
-          hairStyle: girlfriend.appearance.hairStyle,
+          hairStyle: overrides.hairStyleOverride || girlfriend.appearance.hairStyle,
           hairColor: girlfriend.appearance.hairColor,
           eyeColor: girlfriend.appearance.eyeColor,
           skinTone: girlfriend.appearance.skinTone,
           customTraits: girlfriend.appearance.bodyProfile?.customTraits,
           distinguishingFeatures: girlfriend.appearance.distinguishingFeatures,
           currentOutfitStyle: activeOutfit,
+          explicitOutfitSelected: Boolean(options.customOutfit || overrides.outfitOverride),
+          girlfriendReply: overrides.cleanedReplyScene || options.girlfriendReply || '',
           userExtraPrompt: options.scenarioSnippet || '',
           aspectRatio: ratio,
         },
@@ -1047,6 +1148,9 @@ export async function generateSelfie(
     translatedVia,
     scenarioTitle: finalTitle,
     scenarioSnippet: options.scenarioSnippet,
+    girlfriendReplyUsed: Boolean(options.girlfriendReply),
+    outfitOverrideFromReply: overrides.outfitOverride || null,
+    hairStyleOverride: overrides.hairStyleOverride || null,
     outfit: activeOutfit,
     providerConfig: config.provider,
     routeSelected: routeToNanoGpt ? 'nanogpt' : routeToOpenRouter ? 'openrouter' : config.provider,

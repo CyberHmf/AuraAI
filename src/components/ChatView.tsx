@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, Camera, Volume2, VolumeX, Sparkles, Heart, 
-  Sun, Zap, ChevronRight, Image as ImageIcon, X, Loader2, RotateCcw, Mic, Flame
+  Sun, Zap, ChevronRight, Image as ImageIcon, X, Loader2, RotateCcw, Mic, Flame,
+  RefreshCw, Trash2, Pencil, Check
 } from 'lucide-react';
-import { GirlfriendPersona, UserPersona, ChatMessage, RealWorldContext, SelfieItem, VoiceConfig, LightweightMemory, ChatMode } from '../types';
+import { GirlfriendPersona, UserPersona, ChatMessage, RealWorldContext, SelfieItem, VoiceConfig, LightweightMemory, ChatMode, SelfieConfig, LLMConfig } from '../types';
 import { speakMessage, stopSpeaking } from '../services/speechService';
 import { VoiceNoteBubble } from './VoiceNoteBubble';
+import { UserPhotoModal } from './UserPhotoModal';
 
 interface ChatViewProps {
   girlfriend: GirlfriendPersona;
@@ -24,11 +26,16 @@ interface ChatViewProps {
   onOpenSettings: () => void;
   onOpenReset?: () => void;
   isTyping: boolean;
+  isGeneratingSelfie?: boolean;
   context: RealWorldContext;
   activeTokens: number;
   tokensSaved: number;
   voiceConfig?: VoiceConfig;
+  selfieConfig?: SelfieConfig;
+  llmConfig?: LLMConfig;
   onUpdateGreeting?: (newGreeting: string) => void;
+  onDeleteMessage?: (msgId: string) => void;
+  onReloadMessage?: (msgId: string) => Promise<void>;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -48,17 +55,27 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onOpenSettings,
   onOpenReset,
   isTyping,
+  isGeneratingSelfie = false,
   context,
   activeTokens,
   tokensSaved,
   voiceConfig,
+  selfieConfig,
+  llmConfig,
   onUpdateGreeting,
+  onDeleteMessage,
+  onReloadMessage,
 }) => {
   const [inputText, setInputText] = useState('');
   const [selectedUserImage, setSelectedUserImage] = useState<string | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [reloadingMsgId, setReloadingMsgId] = useState<string | null>(null);
   const [enlargedPhoto, setEnlargedPhoto] = useState<SelfieItem | null>(null);
   const [enlargedUserPhoto, setEnlargedUserPhoto] = useState<string | null>(null);
+  const [isGreetingModalOpen, setIsGreetingModalOpen] = useState(false);
+  const [greetingDraft, setGreetingDraft] = useState('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUserPhotoModalOpen, setIsUserPhotoModalOpen] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -76,9 +93,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 8 * 1024 * 1024) {
-        alert("L'image est trop volumineuse (max 8 Mo).");
+        setUploadError("L'image est trop volumineuse (maximum 8 Mo).");
+        setTimeout(() => setUploadError(null), 4500);
+        e.target.value = '';
         return;
       }
+      setUploadError(null);
       const reader = new FileReader();
       reader.onload = () => {
         if (typeof reader.result === 'string') {
@@ -401,45 +421,104 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 }`}>
                   <span>{msg.timestamp}</span>
 
-                  {!isUser && (
-                    <div className="flex items-center gap-1.5">
-                      {(msg.id === 'msg-welcome' || msg.id.startsWith('msg-welcome')) && onUpdateGreeting && (
-                        <button
-                          onClick={() => {
-                            const updated = prompt("Personnaliser le premier message d'accueil de ta compagne :", msg.text);
-                            if (updated !== null && updated.trim()) {
-                              onUpdateGreeting(updated.trim());
-                            }
-                          }}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] text-pink-300 hover:text-white bg-pink-500/15 border border-pink-500/30 transition"
-                          title="Modifier le premier message d'accueil directement"
-                        >
-                          <span>✏️ Modifier</span>
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleToggleVoice(msg)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded-md transition ${
-                          speakingMsgId === msg.id
-                            ? 'bg-rose-500/30 text-rose-300 animate-pulse'
-                            : 'hover:text-slate-300 hover:bg-slate-800'
-                        }`}
-                        title="Écouter la voix de la compagne"
-                      >
-                        {speakingMsgId === msg.id ? (
-                          <>
-                            <VolumeX className="w-3 h-3 text-rose-400" />
-                            <span>Stop</span>
-                          </>
-                        ) : (
-                          <>
-                            <Volume2 className="w-3 h-3 text-rose-400" />
-                            <span>Écouter</span>
-                          </>
+                  {!isUser && (() => {
+                    const isWelcome = msg.id === 'msg-welcome' || msg.id.startsWith('msg-welcome');
+                    let lastUserIdx = -1;
+                    for (let i = messages.length - 1; i >= 0; i--) {
+                      if (messages[i].sender === 'user') {
+                        lastUserIdx = i;
+                        break;
+                      }
+                    }
+                    const lastMsg = messages[messages.length - 1];
+                    const hasEarlierGfReplyAfterLastUser =
+                      lastUserIdx !== -1 &&
+                      messages.slice(lastUserIdx + 1, index).some(m => m.sender === 'girlfriend' && !m.isSystemDivider);
+                    const canReload =
+                      !isWelcome &&
+                      lastUserIdx !== -1 &&
+                      lastMsg?.id === msg.id &&
+                      index > lastUserIdx &&
+                      !hasEarlierGfReplyAfterLastUser;
+
+                    return (
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {isWelcome && onUpdateGreeting && (
+                          <button
+                            onClick={() => {
+                              setGreetingDraft(msg.text);
+                              setIsGreetingModalOpen(true);
+                            }}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] text-pink-300 hover:text-white bg-pink-500/15 border border-pink-500/30 transition"
+                            title="Modifier le premier message d'accueil directement"
+                          >
+                            <Pencil className="w-2.5 h-2.5" />
+                            <span>Modifier</span>
+                          </button>
                         )}
-                      </button>
-                    </div>
-                  )}
+                        <button
+                          onClick={() => handleToggleVoice(msg)}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded-md transition ${
+                            speakingMsgId === msg.id
+                              ? 'bg-rose-500/30 text-rose-300 animate-pulse'
+                              : 'hover:text-slate-300 hover:bg-slate-800'
+                          }`}
+                          title="Écouter la voix de la compagne"
+                        >
+                          {speakingMsgId === msg.id ? (
+                            <>
+                              <VolumeX className="w-3 h-3 text-rose-400" />
+                              <span>Stop</span>
+                            </>
+                          ) : (
+                            <>
+                              <Volume2 className="w-3 h-3 text-rose-400" />
+                              <span>Écouter</span>
+                            </>
+                          )}
+                        </button>
+                        {canReload && onReloadMessage && (
+                          <button
+                            onClick={async () => {
+                              if (speakingMsgId === msg.id) {
+                                stopSpeaking();
+                                setSpeakingMsgId(null);
+                              }
+                              setReloadingMsgId(msg.id);
+                              try {
+                                await onReloadMessage(msg.id);
+                              } finally {
+                                setReloadingMsgId(null);
+                              }
+                            }}
+                            disabled={isTyping || isGeneratingSelfie}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-md hover:text-purple-300 hover:bg-purple-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Régénérer une nouvelle réponse au dernier message"
+                          >
+                            <RefreshCw className={`w-3 h-3 text-purple-400 ${reloadingMsgId === msg.id ? 'animate-spin' : ''}`} />
+                            <span>Régénérer</span>
+                          </button>
+                        )}
+                        {!isWelcome && onDeleteMessage && (
+                          <button
+                            onClick={() => {
+                              if (speakingMsgId === msg.id) {
+                                stopSpeaking();
+                                setSpeakingMsgId(null);
+                              }
+                              onDeleteMessage(msg.id);
+                            }}
+                            disabled={isTyping || isGeneratingSelfie}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-md hover:text-rose-300 hover:bg-rose-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={msg.selfie ? "Supprimer cette réponse et l'image générée" : "Supprimer ce message"}
+                          >
+                            <Trash2 className="w-3 h-3 text-slate-400" />
+                            <span>Supprimer</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -485,7 +564,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       {/* Thumb-Zone Quick Action Chips */}
       <div className="px-4 py-2 bg-[#0b0c13]/80 border-t border-slate-800/60 overflow-x-auto flex items-center gap-2 shrink-0">
         <button
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => setIsUserPhotoModalOpen(true)}
           className="text-xs px-3 py-1.5 rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-200 hover:bg-purple-500/20 active:scale-95 transition whitespace-nowrap shrink-0 flex items-center gap-1.5"
         >
           <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
@@ -620,13 +699,27 @@ export const ChatView: React.FC<ChatViewProps> = ({
           ))}
         </div>
 
+        {/* Inline upload error toast (no browser alert) */}
+        {uploadError && (
+          <div className="max-w-4xl mx-auto mb-2 px-3 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2">
+            <span>{uploadError}</span>
+            <button
+              type="button"
+              onClick={() => setUploadError(null)}
+              className="text-rose-300 hover:text-white transition"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 max-w-4xl mx-auto">
           {/* Send photo trigger */}
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setIsUserPhotoModalOpen(true)}
             className="w-10 h-10 rounded-2xl flex items-center justify-center text-purple-400 hover:text-purple-300 hover:bg-purple-950/40 border border-purple-500/30 transition shrink-0"
-            title="Lui envoyer une photo pour qu'elle la voie"
+            title="Lui envoyer une photo (importer ou générer avec ton portrait)"
           >
             <ImageIcon className="w-4 h-4" />
           </button>
@@ -724,6 +817,115 @@ export const ChatView: React.FC<ChatViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Custom Aura AI Modal for editing the initial greeting message */}
+      {isGreetingModalOpen && onUpdateGreeting && (
+        <div
+          onClick={() => setIsGreetingModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setIsGreetingModalOpen(false);
+            }}
+            className="relative w-full max-w-lg rounded-3xl bg-[#0e1018] border border-rose-500/30 shadow-2xl flex flex-col overflow-hidden"
+          >
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-800/80 flex items-center justify-between bg-[#121420]">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full overflow-hidden border border-rose-500/40 bg-black shrink-0">
+                  <img
+                    src={girlfriend.appearance.avatarUrl}
+                    alt={girlfriend.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white font-display flex items-center gap-1.5">
+                    <span>Personnaliser le message d'accueil</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Définis la toute première phrase et l'ambiance de {girlfriend.name}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsGreetingModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = greetingDraft.trim();
+                if (!trimmed) return;
+                onUpdateGreeting(trimmed);
+                setIsGreetingModalOpen(false);
+              }}
+              className="p-4 sm:p-6 space-y-4 text-xs"
+            >
+              <div className="space-y-2">
+                <label className="text-[11px] font-semibold text-rose-300 uppercase tracking-wider flex items-center justify-between">
+                  <span>Message d'ouverture :</span>
+                  <span className="text-[10px] text-slate-500 normal-case font-normal">
+                    *actions* entre astérisques supportées
+                  </span>
+                </label>
+                <textarea
+                  rows={4}
+                  autoFocus
+                  value={greetingDraft}
+                  onChange={(e) => setGreetingDraft(e.target.value)}
+                  placeholder={`Ex: *te sourit tendrement* Coucou mon cœur, tu m'as tellement manqué aujourd'hui... ✨`}
+                  className="w-full bg-slate-900/90 border border-slate-800 focus:border-rose-500/80 rounded-2xl p-3.5 text-slate-100 placeholder:text-slate-500 focus:outline-none transition leading-relaxed resize-none text-xs sm:text-sm"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsGreetingModalOpen(false)}
+                  className="flex-1 py-2.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition text-xs"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={!greetingDraft.trim()}
+                  className="flex-1 py-2.5 px-4 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-semibold transition disabled:opacity-50 shadow-lg shadow-rose-500/20 text-xs flex items-center justify-center gap-1.5 active:scale-95"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Enregistrer</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal choice: Upload user photo OR Generate AI photo with User portrait persistence */}
+      <UserPhotoModal
+        isOpen={isUserPhotoModalOpen}
+        onClose={() => setIsUserPhotoModalOpen(false)}
+        girlfriend={girlfriend}
+        user={user}
+        selfieConfig={selfieConfig}
+        llmConfig={llmConfig}
+        onPickLocalFile={() => fileInputRef.current?.click()}
+        onAttachGeneratedPhoto={(dataUrl) => {
+          setUploadError(null);
+          setSelectedUserImage(dataUrl);
+        }}
+        onOpenUserProfile={onOpenCustomizer}
+      />
 
     </div>
   );

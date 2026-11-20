@@ -341,6 +341,45 @@ app.use(
   })
 );
 
+// Safely delete a generated selfie image from disk (never allows deleting the active profile avatar or path traversal)
+app.delete('/api/images/:filename', sensitiveApiLimiter, (req, res) => {
+  try {
+    const rawFilename = String(req.params.filename || '');
+    const safeName = path.basename(rawFilename);
+    if (!safeName || safeName !== rawFilename || !/^[a-zA-Z0-9._-]+$/.test(safeName)) {
+      return res.status(400).json({ error: 'Nom de fichier invalide' });
+    }
+
+    const resolvedImagesDir = path.resolve(IMAGES_DIR);
+    const targetPath = path.resolve(IMAGES_DIR, safeName);
+    if (!targetPath.startsWith(resolvedImagesDir + path.sep)) {
+      return res.status(403).json({ error: 'Chemin interdit' });
+    }
+
+    // Never delete the companion's active profile avatar
+    if (fs.existsSync(STATE_FILE)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+        const avatarUrl = parsed?.girlfriend?.appearance?.avatarUrl || '';
+        if (avatarUrl === `/api/images/${safeName}`) {
+          return res.status(400).json({ error: 'Impossible de supprimer le portrait principal du profil' });
+        }
+      } catch {
+        // ignore state read error
+      }
+    }
+
+    if (fs.existsSync(targetPath)) {
+      fs.unlinkSync(targetPath);
+    }
+
+    return res.json({ success: true, deleted: safeName });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Erreur suppression image';
+    return res.status(500).json({ error: msg });
+  }
+});
+
 interface StoredApiKeys {
   groqApiKey?: string;
   openRouterApiKey?: string;
@@ -1481,18 +1520,30 @@ app.post('/api/compile-portrait-prompt', async (req, res) => {
     const nanoKey = (prefProvider === 'nanogpt' && clientApiKey) ? clientApiKey : (stored.nanoGptApiKey || '');
     const orKey = (prefProvider === 'openrouter' && clientApiKey) ? clientApiKey : (stored.openRouterApiKey || '');
 
+    const isUserPhotoMode = mode === 'user_photo';
     const isSelfieMode = mode === 'selfie';
-    const systemInstruction = isSelfieMode
+    const systemInstruction = isUserPhotoMode
+      ? [
+          'You are an expert photorealistic candid smartphone photography prompt compiler (Qwen-Image, Z-Image-Turbo, Flux).',
+          'You receive a JSON description of a user ("gender", "physicalDescription") and "scenePrompt" (written in French or English describing what the user is doing, wearing, and where they are).',
+          'Translate and synthesize EVERY detail faithfully into ONE cohesive English candid photograph prompt (300 to 800 characters MAX).',
+          'STRICT RULES:',
+          '1. Preserve strictly the subject gender, age, hair, beard/facial hair, eye color, height/build, and distinguishing traits from "physicalDescription" and the reference portrait photo.',
+          '2. Stage the exact scene, clothing, pose, props, lighting, and location requested in "scenePrompt" (replacing any background/clothing from the reference portrait).',
+          '3. Authentic 35mm candid smartphone selfie or natural lifestyle photography look, realistic skin pores, NOT 3D/CGI/anime.',
+          '4. Output ONLY the raw English prompt string (no quotes, no markdown, no bullets, no French words).',
+        ].join('\n')
+      : isSelfieMode
       ? [
           'You are an expert photorealistic selfie photography prompt compiler (Qwen-Image, Z-Image-Turbo, Flux).',
-          'You receive a JSON description of a woman + her requested outfit + a user selfie scene/request (often written in French, e.g. "devant le miroir").',
-          'Translate and synthesize EVERY SINGLE field faithfully into ONE cohesive English candid selfie prompt (350 to 900 characters MAX).',
-          'STRICT RULES:',
-          '1. Preserve exact age, ethnicity, eye color, hair color, hair style, skin tone, body silhouette, bust proportions, and ALL customTraits/distinguishingFeatures.',
-          '2. Translate and specify the exact outfit ("currentOutfitStyle") visibly on her.',
-          '3. Translate and stage "userExtraPrompt" as the concrete camera angle, pose, lighting, and location (e.g. "devant le miroir" -> "standing in front of a mirror taking a candid mirror selfie holding a smartphone").',
-          '4. Keep candid 35mm realistic smartphone/camera photography look, natural skin pores, NOT 3D/CGI/anime.',
-          '5. Output ONLY the raw English prompt string. No quotes, no markdown, no bullet points, no French words.',
+          'You receive a JSON description of a woman, her "currentOutfitStyle", optional "explicitOutfitSelected" boolean, optional "userExtraPrompt", and optional "girlfriendReply" (the exact message she just sent describing what she is wearing and doing right now).',
+          'Translate and synthesize EVERY relevant field faithfully into ONE cohesive English candid selfie prompt (350 to 900 characters MAX).',
+          'STRICT PRIORITY & COHERENCE RULES:',
+          '1. Preserve exact age, ethnicity, eyeColor, hairColor, skinTone, bodyType, bustSize, and ALL customTraits/distinguishingFeatures.',
+          '2. VISUAL COHERENCE FIRST: If "girlfriendReply" or "userExtraPrompt" describes what she is wearing (e.g., pajamas, tank top, camisole, bathrobe, towel, dress, hoodie), her hair state (e.g., "les cheveux en bataille" -> messy tousled bedhead hair, wet hair, bun, ponytail), props (e.g., holding a coffee mug), lighting, weather, or setting (e.g., gray rainy Paris outside her window, bedroom, sofa), THAT MUST WIN OVER defaults.',
+          '3. OUTFIT RULE: If "explicitOutfitSelected" is true, visibly dress her in "currentOutfitStyle". Otherwise, if "girlfriendReply" or "userExtraPrompt" mentions clothing (like pajamas), dress her ONLY in that described clothing and IGNORE "currentOutfitStyle". Only use "currentOutfitStyle" when no clothing is mentioned in "girlfriendReply" or "userExtraPrompt".',
+          '4. HAIR & VIBE RULE: Keep her exact "hairColor", but adapt "hairStyle" if "girlfriendReply"/"userExtraPrompt" requests messy/wet/tied hair. NEVER inject contradictory lifestyle/hobby vibes (such as an outdoor cafe terrace from soulTraits) if she is indoors, in pajamas, in bed, or at home.',
+          '5. Keep candid 35mm realistic smartphone selfie look, natural skin pores, NOT 3D/CGI/anime. Output ONLY the raw English prompt string (no quotes, no markdown, no bullets, no French words).',
         ].join('\n')
       : [
           'You are an expert photorealistic portrait prompt translator for AI image generation (Qwen-Image, Z-Image-Turbo, Flux).',

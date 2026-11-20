@@ -37,6 +37,7 @@ export const createBlankCustomPersona = (): GirlfriendPersona => ({
       'Haut décontracté chic & jeans',
       'Robe élégante en lin pastel',
       'Sweat d’intérieur oversize cozy',
+      'Pyjama cosy & débardeur',
     ],
     bodyProfile: {
       ethnicity: 'Caucasienne / Européenne',

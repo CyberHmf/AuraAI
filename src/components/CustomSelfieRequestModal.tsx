@@ -11,12 +11,18 @@ interface CustomSelfieRequestModalProps {
 
 const PRESET_SUGGESTIONS = [
   {
+    title: '☕ Pyjama & café du matin',
+    prompt: 'at home in the morning in cozy pajamas, messy bedhead hair, holding a warm coffee mug by a gray rainy window, natural authentic selfie',
+    suggestedOutfit: 'Pyjama cosy & débardeur',
+  },
+  {
     title: '☕ Au café en terrasse',
     prompt: 'sitting at a Parisian cafe terrace with a warm cappuccino, morning sunlight, relaxed cozy vibe',
   },
   {
     title: '🌙 Sous la couette',
     prompt: 'cozy late evening in bed under fluffy duvet, soft silk camisole, warm bedside lamp glow, tender intimate smile',
+    suggestedOutfit: 'Pyjama cosy & débardeur',
   },
   {
     title: '👗 Miroir tenue du jour',
@@ -52,7 +58,7 @@ export const CustomSelfieRequestModal: React.FC<CustomSelfieRequestModalProps> =
 
   if (!isOpen) return null;
 
-  const outfits = girlfriend.appearance.availableOutfits && girlfriend.appearance.availableOutfits.length > 0
+  const baseOutfits = girlfriend.appearance.availableOutfits && girlfriend.appearance.availableOutfits.length > 0
     ? girlfriend.appearance.availableOutfits
     : [
         'Haut décontracté chic & jeans',
@@ -61,8 +67,17 @@ export const CustomSelfieRequestModal: React.FC<CustomSelfieRequestModalProps> =
         'Veste en cuir souple & t-shirt noir',
       ];
 
+  const hasPajamaOption = baseOutfits.some(o => /pyjama/i.test(o));
+  const outfits = hasPajamaOption
+    ? baseOutfits
+    : [...baseOutfits, 'Pyjama cosy & débardeur'];
+
   const handleApplyPreset = (preset: typeof PRESET_SUGGESTIONS[0]) => {
     setCustomPrompt(preset.prompt);
+    if (preset.suggestedOutfit) {
+      setSelectedOutfit(preset.suggestedOutfit);
+      setCustomOutfitInput('');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,13 +85,18 @@ export const CustomSelfieRequestModal: React.FC<CustomSelfieRequestModalProps> =
     if (!customPrompt.trim()) return;
 
     setIsSubmitting(true);
+    const trimmedPrompt = customPrompt.trim();
     const chosenOutfit = customOutfitInput.trim() || selectedOutfit;
-    const title = customPrompt.trim().length > 30 
-      ? customPrompt.trim().slice(0, 28) + '...'
-      : customPrompt.trim();
+    const isDefaultUntouched = !customOutfitInput.trim() && selectedOutfit === girlfriend.appearance.currentOutfitStyle;
+    const promptMentionsClothing = /\b(pyjama|nuisette|peignoir|serviette|jogging|maillot|sportswear|athletic|camisole|robe|sweat|hoodie)\b/i.test(trimmedPrompt);
+    const effectiveCustomOutfit = (isDefaultUntouched && promptMentionsClothing) ? undefined : chosenOutfit;
+
+    const title = trimmedPrompt.length > 30 
+      ? trimmedPrompt.slice(0, 28) + '...'
+      : trimmedPrompt;
 
     try {
-      await onTriggerSelfie(title, customPrompt.trim(), chosenOutfit);
+      await onTriggerSelfie(title, trimmedPrompt, effectiveCustomOutfit);
       onClose();
     } catch (err) {
       console.error(err);

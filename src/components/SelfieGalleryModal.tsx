@@ -94,7 +94,10 @@ export const SelfieGalleryModal: React.FC<SelfieGalleryModalProps> = ({
                   onChange={(e) => setSelectedOutfit(e.target.value)}
                   className="bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs text-rose-300 focus:outline-none"
                 >
-                  {girlfriend.appearance.availableOutfits.map(o => (
+                  {(girlfriend.appearance.availableOutfits.some(o => /pyjama/i.test(o))
+                    ? girlfriend.appearance.availableOutfits
+                    : [...girlfriend.appearance.availableOutfits, 'Pyjama cosy & débardeur']
+                  ).map(o => (
                     <option key={o} value={o}>{o}</option>
                   ))}
                 </select>
