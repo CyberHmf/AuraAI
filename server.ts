@@ -1682,6 +1682,185 @@ app.post('/api/compile-portrait-prompt', async (req, res) => {
   }
 });
 
+// Suggest a realistic, context-aware daily French outfit based on persona style, occupation, city, local time, day of week, and live weather
+app.post('/api/suggest-outfit', async (req, res) => {
+  try {
+    const { persona, context, llmConfig } = req.body || {};
+    if (!persona || !context) {
+      return res.json({ outfit: null });
+    }
+
+    const stored = getStoredKeys();
+    const prefProvider = (llmConfig?.provider || '').trim();
+    const prefModel = (llmConfig?.model || '').trim();
+    const clientApiKey = (llmConfig?.apiKey || '').trim();
+    const localEndpoint = (llmConfig?.localEndpoint || 'http://localhost:11434/v1').trim();
+
+    const groqKey = (prefProvider === 'groq' && clientApiKey) ? clientApiKey : (stored.groqApiKey || '');
+    const nanoKey = (prefProvider === 'nanogpt' && clientApiKey) ? clientApiKey : (stored.nanoGptApiKey || '');
+    const orKey = (prefProvider === 'openrouter' && clientApiKey) ? clientApiKey : (stored.openRouterApiKey || '');
+
+    const systemInstruction = [
+      'Tu es une styliste personnelle experte chargée de définir la tenue RÉALISTE qu\'une femme porte en ce moment même.',
+      'Tu reçois son profil complet (âge, style vestimentaire principal, métier, caractère, passions, tenue précédente) ainsi que sa ville, son heure locale exacte, le jour de la semaine et la météo en temps réel.',
+      'RÈGLES STRICTES :',
+      '1. Réponds UNIQUEMENT en français naturel avec UNE SEULE description courte et visuelle de sa tenue actuelle (6 à 14 mots, maximum 95 caractères).',
+      '2. Respecte fidèlement son "mainStyle" (ex: Soigné & élégant, Teen look / Trendy, Négligé décontracté, Streetwear / Rock, Riche / Haute couture, Bohème chic, Vintage 90s) et son "tone".',
+      '3. Adapte la tenue à l\'HEURE LOCALE et au JOUR :',
+      '   - Nuit (23h–06h) ou tout début de matinée (06h–07h30) : tenue de nuit ou d\'intérieur cosy adaptée à son style et à la température (ex: débardeur côtelé & short de pyjama en coton, nuisette satin, grand t-shirt rock oversize, pyjama doux).',
+      '   - Journée en semaine (isWeekend=false, 08h–18h) : tenue réaliste cohérente avec son "occupation" et son "mainStyle".',
+      '   - Soirée (18h–23h) ou week-end (isWeekend=true) : tenue de détente chic, balade, café ou soirée adaptée.',
+      '4. Adapte strictement aux TEMPÉRATURES et à la MÉTÉO :',
+      '   - Moins de 10°C ou neige : manteau chaud/doudoune/cuir doublé, maille chaude, écharpe ou bottines.',
+      '   - 10°C à 16°C : veste de mi-saison (trench, blazer, perfecto, cardigan), haut manches longues ou superpositions.',
+      '   - 17°C à 22°C : haut léger, chemise fluide, jean/jupe/robe midi, veste légère optionnelle.',
+      '   - 23°C et plus : matières légères (robe fluide, top en lin, caraco, short/jupe).',
+      '   - Si pluie/averses/bruine/orage : tenue adaptée (trench, imperméable, bottines ou tenue cocooning si chez elle).',
+      '5. Propose une tenue différente de "previousOutfit" pour un renouvellement naturel.',
+      '6. FORMAT OBLIGATOIRE : uniquement les mots de la tenue (aucun préfixe "Tenue :", aucun guillemet, aucun point final, aucune explication, aucun emoji).',
+    ].join('\n');
+
+    const userContent = JSON.stringify({ persona, context });
+
+    const sanitizeOutfit = (rawText: string): string | null => {
+      const cleaned = rawText
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .split('\n')[0]
+        .replace(/^[-•*]\s*/, '')
+        .replace(/^(?:tenue\s*(?:actuelle)?|outfit)\s*:\s*/i, '')
+        .replace(/^["'«`]+|["'»`.!]+$/g, '')
+        .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (cleaned.length < 6 || cleaned.length > 120) return null;
+      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    };
+
+    const callOpenAICompatible = async (url: string, apiKey: string, model: string) => {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userContent },
+          ],
+          temperature: 0.75,
+          max_tokens: 90,
+        }),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!r.ok) return null;
+      const d = await r.json();
+      const raw = (d?.choices?.[0]?.message?.content || '').trim();
+      return sanitizeOutfit(raw);
+    };
+
+    type Candidate = { name: string; run: () => Promise<string | null> };
+    const candidates: Candidate[] = [];
+
+    if (prefProvider === 'local') {
+      candidates.push({
+        name: 'local',
+        run: async () => {
+          const targetUrl = `${localEndpoint.replace(/\/+$/, '')}/chat/completions`;
+          await validateExternalEndpointUrl(targetUrl, { disallowPrivate: false });
+          return callOpenAICompatible(targetUrl, 'ollama', prefModel || 'llama3.2');
+        },
+      });
+    }
+    if (prefProvider === 'groq' && groqKey) {
+      candidates.push({
+        name: 'groq',
+        run: () => callOpenAICompatible('https://api.groq.com/openai/v1/chat/completions', groqKey, prefModel || 'llama-3.3-70b-versatile'),
+      });
+    }
+    if (prefProvider === 'nanogpt' && nanoKey) {
+      candidates.push({
+        name: 'nanogpt',
+        run: () => callOpenAICompatible('https://nano-gpt.com/api/v1/chat/completions', nanoKey, prefModel || 'z-ai/glm-5.3-flash'),
+      });
+    }
+    if (prefProvider === 'openrouter' && orKey) {
+      candidates.push({
+        name: 'openrouter',
+        run: () => callOpenAICompatible('https://openrouter.ai/api/v1/chat/completions', orKey, prefModel || 'meta-llama/llama-3.3-70b-instruct'),
+      });
+    }
+    if (prefProvider === 'gemini') {
+      const activeAi = getGeminiClient(clientApiKey);
+      if (activeAi) {
+        candidates.push({
+          name: 'gemini',
+          run: async () => {
+            const resp = await activeAi.models.generateContent({
+              model: prefModel && prefModel.startsWith('gemini-') ? prefModel : 'gemini-3.1-flash-lite',
+              contents: [{ role: 'user', parts: [{ text: userContent }] }],
+              config: { systemInstruction, temperature: 0.75 },
+            });
+            return sanitizeOutfit(resp.text || '');
+          },
+        });
+      }
+    }
+
+    if (groqKey && prefProvider !== 'groq') {
+      candidates.push({
+        name: 'groq',
+        run: () => callOpenAICompatible('https://api.groq.com/openai/v1/chat/completions', groqKey, 'llama-3.3-70b-versatile'),
+      });
+    }
+    if (nanoKey && prefProvider !== 'nanogpt') {
+      candidates.push({
+        name: 'nanogpt',
+        run: () => callOpenAICompatible('https://nano-gpt.com/api/v1/chat/completions', nanoKey, 'z-ai/glm-5.3-flash'),
+      });
+    }
+    if (orKey && prefProvider !== 'openrouter') {
+      candidates.push({
+        name: 'openrouter',
+        run: () => callOpenAICompatible('https://openrouter.ai/api/v1/chat/completions', orKey, 'meta-llama/llama-3.3-70b-instruct'),
+      });
+    }
+    if (prefProvider !== 'gemini') {
+      const fallbackAi = getGeminiClient(clientApiKey);
+      if (fallbackAi) {
+        candidates.push({
+          name: 'gemini',
+          run: async () => {
+            const resp = await fallbackAi.models.generateContent({
+              model: 'gemini-3.1-flash-lite',
+              contents: [{ role: 'user', parts: [{ text: userContent }] }],
+              config: { systemInstruction, temperature: 0.75 },
+            });
+            return sanitizeOutfit(resp.text || '');
+          },
+        });
+      }
+    }
+
+    for (const c of candidates) {
+      try {
+        const result = await c.run();
+        if (result) {
+          return res.json({ outfit: result, generatedVia: c.name });
+        }
+      } catch {
+        // try next provider
+      }
+    }
+
+    res.json({ outfit: null });
+  } catch (err) {
+    console.warn('Suggest outfit warning:', err);
+    res.json({ outfit: null });
+  }
+});
+
 // Helper to convert base64 image strings to physical disk files in DATA_DIR/images
 function saveBase64ToDisk(base64Str: string): string {
   if (!base64Str || typeof base64Str !== 'string') return base64Str;

@@ -70,7 +70,8 @@ Never break character. You are a real, loving human companion with the exact bod
   // 2. Real-World Context Injection (Weather, Real Time, Cultural vibe)
   const contextParts: string[] = [];
   if (context.injectTime) {
-    contextParts.push(`Local Time: ${context.currentTime} (${context.timeOfDay})`);
+    const dayLabel = context.dayOfWeek ? `${context.dayOfWeek}, ` : '';
+    contextParts.push(`Local Time (${context.city}): ${dayLabel}${context.currentTime} (${context.timeOfDay})`);
   }
   if (context.injectWeather) {
     contextParts.push(`Current Weather in ${context.city}: ${context.temperature}°C, ${context.weatherCondition}`);

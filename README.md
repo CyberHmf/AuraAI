@@ -44,15 +44,16 @@ It is engineered from the ground up to solve **massive token bloat** in roleplay
 
 ### 2. 📸 Consistent Selfie Generation & Facial Persistence (Img2Img)
 - **Strict Identity Preservation**: Generated selfies use an invariant `faceAnchorPrompt` combined with **automatic upper-center face-and-shoulders cropping** (`cropFaceAndShouldersForVision`) before sending the reference image to Img2Img models (such as **NanoGPT `qwen-image`**).
+- **Reply-to-Image Visual Coherence**: When requesting a selfie in chat, Aura AI waits for her text reply first and injects her exact described outfit, hair state, props (e.g. coffee mug), and setting into the image prompt so text and photo always match.
 - **Scene & Outfit Freedom**: Explicit prompt directives force the image model to discard the reference portrait's original background and clothes while preserving the exact face, eyes, and hairstyle.
-- **Natural Chat Detection + Custom Selfie Modal**: Ask naturally in chat (*"Montre-moi à quoi tu ressembles"*, *"Envoie-moi un selfie devant le miroir"*) or pick/customize scenarios (*Fresh out of the shower, Cozy in bed, Mirror outfit check, Parisian café terrace, Candlelit gothic, Rock street, Sunset walk, Study night, Gym, Evening dress*).
+- **Natural Chat Detection + Custom Selfie Modal**: Ask naturally in chat (*"Montre-moi à quoi tu ressembles"*, *"Envoie-moi un selfie devant le miroir"*) or pick/customize scenarios (*Fresh out of the shower, Cozy morning pajama & coffee, Cozy in bed, Mirror outfit check, Parisian café terrace, Candlelit gothic, Rock street, Sunset walk, Study night, Gym, Evening dress*), including a selectable **`Pyjama cosy & débardeur`** wardrobe option.
 - **Private Selfie Album**: All generated photos are saved locally on disk (`data/images/`) and browsable in the **Private Album** modal with lightboxes and favorites.
 
 ### 3. 💬 Dual Chat Modes: SMS vs. In Real Life (IRL)
 - **💬 SMS Mode**: Realistic smartphone texting style — strictly forbids asterisk roleplay gestures for authentic texting immersion.
 - **✨ In Real Life (IRL) Mode**: Physical face-to-face immersion describing touches, glances, smiles, and body language inside `*asterisks*`.
-- **IRL Quick-Action Shortcuts**: One-tap shortcut bar right above the chat input (`*te sourit doucement*`, `*prend ta main*`, `*rougit légèrement*`, etc.) in IRL mode.
-- **Auto-Expanding Vertical Input & Emoji Bar**: Multi-line input expands vertically as you type long messages (`Enter` to send, `Shift+Enter` for newline) plus a quick emoji bar.
+- **Delete & Regenerate ("Second Pass")**: Every companion message includes inline **Regenerate** and **Delete** buttons next to *Listen* (automatically removing any attached generated image from the Private Album and server disk).
+- **Inline Greeting Editor & Quick-Action Shortcuts**: Edit the initial greeting via a dedicated in-app modal, use one-tap IRL action shortcuts above the chat input, and type comfortably in the auto-expanding input bar (`Enter` to send, `Shift+Enter` for newline) with a quick emoji bar.
 
 ### 4. 🧠 Lightweight JSON Memory, Dynamic Diary & Jealousy Detector
 - **Token Optimization Dashboard**: Real-time token counter showing active turn tokens vs. classic bloated history, plus a configurable sliding window slider (4 to 16 messages) and injection format selector (*Compact JSON*, *Bullet Points*, *Minimal*).
@@ -61,10 +62,13 @@ It is engineered from the ground up to solve **massive token bloat** in roleplay
 - **Secret Diary**: Initialized with your real profile name and **automatically adds new diary entries every 6 messages** reflecting your latest conversations and current mood.
 - **🌶️ Semantic Jealousy Detector**: Mentioning a colleague, ex, or date triggers a playful/spicy jealousy state (*Curious*, *Piquante*, *Possessive*) with an alert banner and a *"La rassurer 💕"* quick-action button.
 
-### 5. 👁️ Multimodal Vision, 🎙️ Voice Notes & 🌍 Live Real-World Context
-- **Multimodal Photo Vision**: Upload photos from your device into the chat; compatible vision models (Ollama Vision, Gemini, OpenRouter, NanoGPT, Groq) analyze the image and store the memory.
+### 5. 👁️ Multimodal Vision, 👗 Real-Life Adaptive Outfits & 🌍 Live Context
+- **Send Photo: Upload OR AI Photo Generation with User Portrait Persistence**: When sending her a photo, either upload an image from your device **or** generate an AI photo starring *you* in any custom scene while preserving your `"Him"` reference portrait. Compatible vision models analyze your photo and store the moment in memory.
+- **👗 Automatic Real-Life Adaptive Outfit Engine**:
+  - Uses each city's **true IANA local clock & weekday/weekend status** (*Paris, Geneva, Montreal, New York, Tokyo*, etc.) combined with live weather and temperature.
+  - Automatically suggests realistic French outfits matching her **main clothing style**, occupation, personality tone, time of day (night/morning sleepwear, weekday workwear, weekend/evening wear), and weather/rain/cold — updating silently on the **first message of the day**, **every 6 hours**, on **city change**, or **on-demand via the refresh button** next to `Tenue : ...` (while respecting manual outfit selections).
 - **WhatsApp-Style Voice Notes & TTS**: Animated audio waveform bubbles (`1x`, `1.5x`, `2x` speed + expandable transcript + whisper mode) powered by free browser **Web Speech API** or a local GPU TTS server (**XTTS-v2 / Piper / AllTalk** via `/api/tts-proxy`).
-- **Live Real-World Context**: Optional injection of local time of day, live weather for any chosen city, and current cultural headlines.
+- **Live Real-World Context**: Optional injection of local city time & weekday, live weather, and current cultural headlines.
 
 ### 6. 🧹 Dual Reset System & Live Debug Logs
 - **Interactive Debug Logs Modal** (`/api/logs` + circular client rotation): Tracks `LLM_CHAT`, `VISION_INPUT`, `IMAGE_GEN`, `STORAGE`, and `RUNTIME` events with JSON inspection and `.txt` export.
@@ -202,13 +206,15 @@ Aura AI includes a full Web App Manifest (`manifest.webmanifest`), adaptive icon
     ├── services/
     │   ├── llmService.ts      # Multi-provider chat & multimodal vision client
     │   ├── selfieService.ts   # Portrait compiler & consistent Img2Img selfie pipeline
+    │   ├── userPhotoService.ts# User ("Him") Img2Img scene generator preserving user portrait
+    │   ├── outfitService.ts   # Adaptive real-life outfit engine (6h / daily / city / on-demand)
     │   ├── memoryService.ts   # Low-token JanitorAI JSON prompt builder & fact/jealousy extraction
     │   ├── imageUtils.ts      # Upper-center face & shoulders cropper for consistent Img2Img
-    │   ├── contextService.ts  # Live weather, time & news context fetcher
+    │   ├── contextService.ts  # City-accurate local timezone clock, live weather & news fetcher
     │   ├── speechService.ts   # Web Speech API & Local GPU TTS playback
     │   ├── safeStorage.ts     # Quota-safe localStorage wrapper with image pruning
     │   └── logger.ts          # Client/server circular trace logger
-    └── components/            # Modular UI (ChatView, PersonaCustomizerModal, LLMSettingsModal, DiaryModal, TokenMemoryModal, SelfieGalleryModal, LogsModal, etc.)
+    └── components/            # Modular UI (ChatView, PersonaCustomizerModal, UserPhotoModal, LLMSettingsModal, DiaryModal, TokenMemoryModal, SelfieGalleryModal, LogsModal, etc.)
 ```
 
 ---

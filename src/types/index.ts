@@ -39,6 +39,9 @@ export interface GirlfriendPersona {
     availableOutfits: string[];
     bodyProfile?: BodyProfile;
     faceSeed?: number; // Deterministic persistent seed for facial consistency without base64 token bloat
+    lastAutoOutfitAt?: number;
+    lastAutoOutfitDate?: string;
+    lastAutoOutfitCity?: string;
   };
   voice: {
     pitch: number;
@@ -96,6 +99,11 @@ export interface RealWorldContext {
   isDay: boolean;
   currentTime: string;
   timeOfDay: 'morning' | 'afternoon' | 'evening' | 'night';
+  timezone?: string;
+  localDateKey?: string;
+  dayOfWeek?: string;
+  isWeekend?: boolean;
+  lastFetchedAt?: number;
   recentNewsHeadlines: string[];
   injectWeather: boolean;
   injectNews: boolean;

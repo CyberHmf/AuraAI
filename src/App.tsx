@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   GirlfriendPersona, UserPersona, LightweightMemory, 
   RealWorldContext, LLMConfig, SelfieConfig, SelfieItem, ChatMessage, VoiceConfig, ChatMode 
@@ -11,7 +11,7 @@ import {
 import { 
   DEFAULT_USER, INITIAL_MEMORIES, INITIAL_SELFIES, createBlankCustomPersona, buildInitialMemory 
 } from './data/presets';
-import { fetchLiveContext } from './services/contextService';
+import { fetchLiveContext, refreshContextClock } from './services/contextService';
 import { 
   buildLightweightSystemPrompt, getSlidingWindowMessages, 
   calculateTokenOptimizationStats, analyzeAndExtractFacts 
@@ -19,6 +19,7 @@ import {
 import { sendChatMessage } from './services/llmService';
 import { generateSelfie } from './services/selfieService';
 import { speakMessage, stopSpeaking } from './services/speechService';
+import { isBlankOnboardingPersona, shouldAutoUpdateOutfit, suggestAdaptiveOutfit } from './services/outfitService';
 
 import { TopBar } from './components/TopBar';
 import { ChatView } from './components/ChatView';
@@ -145,22 +146,34 @@ export default function App() {
   });
 
   // 2. Real-World Live Context (Weather, Time, News)
-  const [context, setContext] = useState<RealWorldContext>({
-    city: 'Paris',
-    temperature: 19,
-    weatherCondition: 'Ciel doux et dégagé',
-    weatherCode: 1,
-    isDay: true,
-    currentTime: '14:30',
-    timeOfDay: 'afternoon',
-    recentNewsHeadlines: [
-      'Une exposition de photographie d\'art contemporain fait sensation à Paris',
-      'Le festival du film d\'auteur démarre ce week-end'
-    ],
-    injectWeather: true,
-    injectNews: true,
-    injectTime: true,
+  const [context, setContext] = useState<RealWorldContext>(() => {
+    const baseDefault: RealWorldContext = {
+      city: 'Paris',
+      temperature: 19,
+      weatherCondition: 'Ciel doux et dégagé',
+      weatherCode: 1,
+      isDay: true,
+      currentTime: '14:30',
+      timeOfDay: 'afternoon',
+      recentNewsHeadlines: [
+        'Une exposition de photographie d\'art contemporain fait sensation à Paris',
+        'Le festival du film d\'auteur démarre ce week-end'
+      ],
+      injectWeather: true,
+      injectNews: true,
+      injectTime: true,
+    };
+    const saved = localStorage.getItem('aura_context');
+    if (saved) {
+      try {
+        return refreshContextClock({ ...baseDefault, ...JSON.parse(saved) });
+      } catch {
+        // fallback
+      }
+    }
+    return refreshContextClock(baseDefault);
   });
+  const autoOutfitInFlightRef = useRef<boolean>(false);
 
   // 3. Conversation Messages
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -199,6 +212,7 @@ export default function App() {
 
   const [isTyping, setIsTyping] = useState(false);
   const [isGeneratingSelfie, setIsGeneratingSelfie] = useState(false);
+  const [isRefreshingOutfit, setIsRefreshingOutfit] = useState(false);
 
   // 4. Chat Mode (SMS vs IRL)
   const [chatMode, setChatMode] = useState<ChatMode>(() => {
@@ -335,6 +349,9 @@ export default function App() {
               }
               if (s.voiceConfig) setVoiceConfig(s.voiceConfig);
               if (s.chatMode) setChatMode(s.chatMode);
+              if (s.context) {
+                setContext(prev => refreshContextClock({ ...prev, ...s.context }));
+              }
             }
           }
         } catch (err) {
@@ -419,6 +436,7 @@ export default function App() {
         selfieConfig: safeSelfieConfig,
         voiceConfig,
         chatMode,
+        context,
       };
 
       fetch('/api/state', {
@@ -438,13 +456,16 @@ export default function App() {
             safeStorage.setItem('aura_selfie_config', JSON.stringify(data.state.selfieConfig));
             safeStorage.setItem('aura_voice_config', JSON.stringify(data.state.voiceConfig));
             safeStorage.setItem('aura_chat_mode', data.state.chatMode);
+            if (data.state.context) {
+              safeStorage.setItem('aura_context', JSON.stringify(data.state.context));
+            }
           }
         })
         .catch(err => console.warn('Erreur sync état serveur:', err));
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [authState.authenticated, isStateHydrated, girlfriend, user, memory, selfies, messages, llmConfig, selfieConfig, voiceConfig, chatMode]);
+  }, [authState.authenticated, isStateHydrated, girlfriend, user, memory, selfies, messages, llmConfig, selfieConfig, voiceConfig, chatMode, context]);
 
   // Remise à zéro SOFT :
   // Efface les messages, photos du chat, selfies et mémoire conversationnelle
@@ -609,15 +630,104 @@ export default function App() {
     safeStorage.setItem('aura_voice_config', JSON.stringify(voiceConfig));
   }, [voiceConfig]);
 
-  // Load live weather & context on mount
-  useEffect(() => {
-    fetchLiveContext(context.city).then(freshContext => {
-      setContext(prev => ({
+  const runAutoOutfitUpdate = async (
+    targetGf: GirlfriendPersona,
+    targetCtx: RealWorldContext,
+    activeLlmConfig: LLMConfig,
+    forceRefresh: boolean = false
+  ): Promise<GirlfriendPersona> => {
+    if (autoOutfitInFlightRef.current || isBlankOnboardingPersona(targetGf)) {
+      return targetGf;
+    }
+    if (!forceRefresh && !shouldAutoUpdateOutfit(targetGf, targetCtx)) {
+      return targetGf;
+    }
+    autoOutfitInFlightRef.current = true;
+    setIsRefreshingOutfit(true);
+    try {
+      const { outfit } = await suggestAdaptiveOutfit(targetGf, targetCtx, activeLlmConfig);
+      const nowMs = Date.now();
+      const syncedCtx = refreshContextClock(targetCtx, new Date(nowMs));
+      const updatedGf: GirlfriendPersona = {
+        ...targetGf,
+        appearance: {
+          ...targetGf.appearance,
+          currentOutfitStyle: outfit,
+          lastAutoOutfitAt: nowMs,
+          lastAutoOutfitDate: syncedCtx.localDateKey,
+          lastAutoOutfitCity: syncedCtx.city,
+        },
+      };
+      setGirlfriend(prev => ({
         ...prev,
-        ...freshContext,
+        appearance: {
+          ...prev.appearance,
+          currentOutfitStyle: outfit,
+          lastAutoOutfitAt: nowMs,
+          lastAutoOutfitDate: syncedCtx.localDateKey,
+          lastAutoOutfitCity: syncedCtx.city,
+        },
       }));
+      safeStorage.setItem('aura_girlfriend', JSON.stringify(updatedGf));
+      return updatedGf;
+    } catch {
+      return targetGf;
+    } finally {
+      autoOutfitInFlightRef.current = false;
+      setIsRefreshingOutfit(false);
+    }
+  };
+
+  const handleManualRefreshOutfit = async () => {
+    if (autoOutfitInFlightRef.current || isBlankOnboardingPersona(girlfriend)) return;
+    setIsRefreshingOutfit(true);
+    try {
+      let activeContext = refreshContextClock(context);
+      try {
+        const freshContext = await fetchLiveContext(activeContext.city);
+        activeContext = {
+          ...activeContext,
+          ...freshContext,
+          injectWeather: activeContext.injectWeather,
+          injectNews: activeContext.injectNews,
+          injectTime: activeContext.injectTime,
+        };
+        setContext(activeContext);
+        safeStorage.setItem('aura_context', JSON.stringify(activeContext));
+      } catch {
+        // Keep current weather if offline; clock is still refreshed
+      }
+      await runAutoOutfitUpdate(girlfriend, activeContext, llmConfig, true);
+    } finally {
+      if (!autoOutfitInFlightRef.current) {
+        setIsRefreshingOutfit(false);
+      }
+    }
+  };
+
+  // Load live weather & context after state hydration and on city change, then adapt outfit silently if needed
+  useEffect(() => {
+    if (!authState.authenticated || !isStateHydrated) return;
+    let cancelled = false;
+    fetchLiveContext(context.city).then(freshContext => {
+      if (cancelled) return;
+      const merged: RealWorldContext = {
+        ...context,
+        ...freshContext,
+        injectWeather: context.injectWeather,
+        injectNews: context.injectNews,
+        injectTime: context.injectTime,
+      };
+      setContext(merged);
+      safeStorage.setItem('aura_context', JSON.stringify(merged));
+      if (shouldAutoUpdateOutfit(girlfriend, merged)) {
+        void runAutoOutfitUpdate(girlfriend, merged, llmConfig);
+      }
     });
-  }, [context.city]);
+    return () => {
+      cancelled = true;
+    };
+  }, [authState.authenticated, isStateHydrated, context.city]);
 
   // Token Optimization Statistics
   const systemPrompt = buildLightweightSystemPrompt(girlfriend, user, memory, context, llmConfig, chatMode);
@@ -677,16 +787,20 @@ export default function App() {
     userMsg: ChatMessage,
     historyBeforeUserMsg: ChatMessage[],
     currentMemory: LightweightMemory,
-    allowAutoDiary: boolean
+    allowAutoDiary: boolean,
+    overrideGirlfriend?: GirlfriendPersona,
+    overrideContext?: RealWorldContext
   ) => {
+    const activeGirlfriend = overrideGirlfriend || girlfriend;
+    const activeContext = overrideContext || refreshContextClock(context);
     const text = userMsg.text;
     const response = await sendChatMessage(
       text,
       historyBeforeUserMsg,
-      girlfriend,
+      activeGirlfriend,
       user,
       currentMemory,
-      context,
+      activeContext,
       llmConfig,
       userMsg.userImage,
       chatMode
@@ -711,7 +825,7 @@ export default function App() {
     if (isExplicitSelfieRequest && selfieConfig.enablePhotoRequests && !response.isError) {
       setIsGeneratingSelfie(true);
       try {
-        selfieItem = await generateSelfie(girlfriend, selfieConfig, {
+        selfieItem = await generateSelfie(activeGirlfriend, selfieConfig, {
           scenarioTitle: 'Selfie sur demande',
           scenarioSnippet: `user asked: "${normalizedText}" — candid authentic selfie matching her exact current description`,
           girlfriendReply: cleanedResponseText,
@@ -783,7 +897,7 @@ export default function App() {
 
     // Auto-play voice if configured
     if (voiceConfig.autoPlay && !response.isError) {
-      speakMessage(response.text, girlfriend, voiceConfig);
+      speakMessage(response.text, activeGirlfriend, voiceConfig);
     }
   };
 
@@ -813,7 +927,33 @@ export default function App() {
     }
 
     try {
-      await generateGirlfriendReply(userMsg, historyBeforeUserMsg, currentMemory, true);
+      let activeContext = refreshContextClock(context);
+      if (!activeContext.lastFetchedAt || Date.now() - activeContext.lastFetchedAt > 30 * 60 * 1000) {
+        const freshContext = await fetchLiveContext(activeContext.city);
+        activeContext = {
+          ...activeContext,
+          ...freshContext,
+          injectWeather: activeContext.injectWeather,
+          injectNews: activeContext.injectNews,
+          injectTime: activeContext.injectTime,
+        };
+        setContext(activeContext);
+        safeStorage.setItem('aura_context', JSON.stringify(activeContext));
+      }
+
+      let activeGirlfriend = girlfriend;
+      if (shouldAutoUpdateOutfit(activeGirlfriend, activeContext)) {
+        activeGirlfriend = await runAutoOutfitUpdate(activeGirlfriend, activeContext, llmConfig);
+      }
+
+      await generateGirlfriendReply(
+        userMsg,
+        historyBeforeUserMsg,
+        currentMemory,
+        true,
+        activeGirlfriend,
+        activeContext
+      );
     } catch (err) {
       console.error('Chat error:', err);
     } finally {
@@ -975,6 +1115,8 @@ export default function App() {
           }}
           onDeleteMessage={handleDeleteMessage}
           onReloadMessage={handleReloadMessage}
+          onRefreshOutfit={handleManualRefreshOutfit}
+          isRefreshingOutfit={isRefreshingOutfit}
         />
       </main>
 
@@ -997,9 +1139,23 @@ export default function App() {
         selfieConfig={selfieConfig}
         llmConfig={llmConfig}
         onSave={(updatedGf, updatedUsr) => {
-          setGirlfriend(updatedGf);
+          const outfitChangedManually =
+            updatedGf.appearance.currentOutfitStyle !== girlfriend.appearance.currentOutfitStyle;
+          const syncedClock = refreshContextClock(context);
+          const gfToSave: GirlfriendPersona = outfitChangedManually
+            ? {
+                ...updatedGf,
+                appearance: {
+                  ...updatedGf.appearance,
+                  lastAutoOutfitAt: Date.now(),
+                  lastAutoOutfitDate: syncedClock.localDateKey,
+                  lastAutoOutfitCity: syncedClock.city,
+                },
+              }
+            : updatedGf;
+          setGirlfriend(gfToSave);
           setUser(updatedUsr);
-          safeStorage.setItem('aura_girlfriend', JSON.stringify(updatedGf));
+          safeStorage.setItem('aura_girlfriend', JSON.stringify(gfToSave));
           safeStorage.setItem('aura_user', JSON.stringify(updatedUsr));
 
           const newFacts: string[] = [];
@@ -1132,8 +1288,7 @@ export default function App() {
         onUpdateVoiceConfig={setVoiceConfig}
         context={context}
         onUpdateCity={(cityName) => {
-          setContext(prev => ({ ...prev, city: cityName }));
-          fetchLiveContext(cityName).then(fresh => setContext(prev => ({ ...prev, ...fresh })));
+          setContext(prev => refreshContextClock({ ...prev, city: cityName, timezone: undefined }));
         }}
         onToggleContextOption={(key, val) => {
           setContext(prev => ({ ...prev, [key]: val }));

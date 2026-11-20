@@ -116,39 +116,36 @@ L'application est disponible par défaut sur : **`http://localhost:9876`** (conf
 
 ## ✨ Fonctionnalités Clés & Dernières Nouveautés
 
-### 1. 🌶️ Détecteur de Jalousie & Réparties Piquantes
+### 1. 👗 Tenue Adaptative "Real-Life" en Temps Réel (Style, Ville, Heure & Météo)
+- **Horloge locale exacte par ville** : Calcul en temps réel de l'heure locale et du jour de la semaine sur le fuseau horaire exact de la ville sélectionnée (*Paris, Genève, Montréal, New York, Tokyo...*) couplé à la météo et la température en direct.
+- **Styliste IA multi-facteurs (avec fallback local hors-ligne)** : Adapte automatiquement sa tenue selon son **style vestimentaire principal** (*Soigné & élégant, Streetwear / Rock, Riche / Haute couture, Bohème chic, Vintage 90s, Teen look / Trendy, Négligé décontracté*), son métier, son tempérament, la tranche horaire (nuit/réveil cosy, journée en semaine, soirée/week-end) et la météo (manteau, trench pluie, tenue d'été…).
+- **Mise à jour silencieuse & rafraîchissement à la demande** : Renouvellement automatique au **1er message de chaque nouvelle journée**, **toutes les 6 heures** ou lors d'un **changement de ville**, plus un **bouton de rafraîchissement instantané** à droite de `Tenue : ...` dans la barre haute du chat (tout en respectant vos choix manuels dans *Profil* ou *Selfie*).
+
+### 2. 📸 Selfies Cohérents (Texte ↔ Image), Garde-robe Pyjama & Contrôle du Chat
+- **Cohérence visuelle stricte lors des demandes en chat** : L'application attend d'abord la réponse de votre compagne pour injecter fidèlement sa tenue décrite, sa coiffure (*cheveux en bataille*, etc.), ses accessoires (*tasse de café*) et son décor dans le prompt de génération d'image.
+- **Option Pyjama intégrée** : Tenue *`Pyjama cosy & débardeur`* sélectionnable dans le profil/galerie et préréglage *☕ Pyjama & café du matin* dans le modal Selfie.
+- **Supprimer ou Régénérer ("Seconde passe")** : Chaque bulle de votre compagne dispose des boutons **Régénérer** et **Supprimer** alignés à côté d'*Écouter* (supprimant automatiquement l'image associée de l'Album Privé et du disque serveur), ainsi qu'une modale soignée pour modifier son message d'accueil initial.
+
+### 3. 📷 Envoi de Photo : Import ou Génération IA avec Votre Portrait ("Lui")
+- En cliquant sur **« Lui envoyer une photo »**, choisissez entre :
+  - **Importer une photo** depuis votre appareil (comme un envoi classique), **ou**
+  - **Générer une photo de vous par IA** en décrivant simplement la scène : l'application conserve fidèlement les traits de votre photo de référence (`Profil "Lui"`) tout en l'intégrant dans le décor et l'ambiance demandés, sans jamais altérer la génération des selfies de votre compagne.
+- **Vision Multimodale** : Elle analyse l'image reçue, réagit avec émotion et mémorise le moment partagé.
+
+### 4. 🌶️ Détecteur de Jalousie & Réparties Piquantes
 - **Détection sémantique en temps réel** : Si vous mentionnez une collègue, une amie, une ex, un rencard ou une absence dans le chat (*ou via le bouton rapide "Tester la jalousie 🌶️"*), son humeur bascule instantanément en mode jalouse/taquine.
 - **Réparties cinglantes et piquantes** : Elle vous questionne avec une pointe d'espièglerie et de possessivité douce (*« Ah oui ? Et elle est si intéressante que ça cette collègue ? »*).
 - **Bandeau d'alerte & Bouton "La rassurer 💕"** : Un clic ou quelques mots tendres suffisent pour qu'elle fonde de bonheur et retrouve son grand sourire.
 
-### 2. 🎙️ Notes Vocales WhatsApp avec Visualiseur Audio Animé
+### 5. 🎙️ Notes Vocales WhatsApp avec Visualiseur Audio Animé
 - **Bulle vocale style WhatsApp/Telegram** : Intégrée directement dans le flux de messages avec avatar, nom, minuteur (`0:05 / 0:14`) et statut (*Message vocal* ou *Chuchotement secret 🤫*).
-- **Visualiseur à ondes audio** : Les barres de spectrogramme s'animent et progressent en temps réel pendant la lecture.
-- **Contrôles avancés** :
-  - Bouton Play / Pause dynamique
-  - Sélecteur de vitesse de lecture : **`1x`**, **`1.5x`**, **`2x`**
-  - Accordéon dépliable pour afficher ou masquer la transcription textuelle.
+- **Visualiseur à ondes audio** : Les barres de spectrogramme s'animent et progressent en temps réel pendant la lecture (`1x`, `1.5x`, `2x` + transcription dépliable).
 - **100% Gratuit** : Fonctionne nativement avec la synthèse vocale intégrée du navigateur (**Web Speech API**) ou votre serveur GPU local (**XTTS-v2 / Piper / AllTalk**).
 
-### 3. 🧖‍♀️ Scénarios de Selfies Candid (Visage 100% Constant)
-- **Garantie zéro déformation & Face Anchor invariant** : Chaque photo préserve strictement la structure faciale, la coupe et les traits de votre compagne.
-- **Nouveaux scénarios ultra-réalistes intégrés** :
-  - **Sortie de douche 🧖‍♀️** : Serviette blanche dans les cheveux, peau fraîche et lumineuse, gouttelettes délicates, regard complice.
-  - **Sous la couette 🌙** : Au lit tard le soir sous les draps, nuisette soyeuse, lumière tamisée de chevet.
-  - **Miroir & Tenue** : Vérification d'essayage avant de sortir.
-  - **Gothique aux chandelles & Rebelle rock cuir** pour les personnalités sombres.
-
-### 4. 🧹 Double Option de Réinitialisation ("Clear")
-- **1. Remise à zéro SOFT (Recommandée)** :
-  - Vide les messages du chat, les photos échangées et la mémoire volatile.
-  - **Préserve scrupuleusement le profil de la Girlfriend** (son nom, sa bio, ses goûts et surtout son portrait avatar d'origine intact).
-- **2. Remise à zéro COMPLÈTE & IRRÉVERSIBLE (HARD)** :
-  - Efface l'intégralité du LocalStorage (Girlfriend, User, mémoires, albums, configs) et repart d'une feuille vierge.
-  - Protégée par confirmation textuelle (`RESET`).
-
-### 5. 👁️ Vision Multimodale (Analyse de vos Photos)
-- Envoyez vos propres photos dans le chat (repas, bureau de travail, paysage, animal, vêtements...).
-- Elle analyse l'image, réagit avec émotion et stocke les faits clés dans sa mémoire légère pour s'en souvenir lors des prochains échanges.
+### 6. 🧖‍♀️ Scénarios de Selfies Candid & 🧹 Double Option de Réinitialisation
+- **Garantie zéro déformation & Face Anchor invariant** : Chaque photo préserve strictement la structure faciale, la coupe et les traits de votre compagne (*Sortie de douche 🧖‍♀️, Sous la couette 🌙, Miroir & Tenue, Gothique aux chandelles, Rebelle rock cuir...*).
+- **Remise à zéro SOFT (Recommandée)** : Vide les messages du chat, les photos échangées et la mémoire volatile tout en **préservant scrupuleusement le profil de la Girlfriend** (nom, bio, goûts et portrait d'origine intact).
+- **Remise à zéro COMPLÈTE & IRRÉVERSIBLE (HARD)** : Efface tout l'état local et serveur (protégée par confirmation `RESET`) tout en **conservant vos clés API** enregistrées sur le serveur.
 
 ---
 

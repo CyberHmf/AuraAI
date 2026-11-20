@@ -36,6 +36,8 @@ interface ChatViewProps {
   onUpdateGreeting?: (newGreeting: string) => void;
   onDeleteMessage?: (msgId: string) => void;
   onReloadMessage?: (msgId: string) => Promise<void>;
+  onRefreshOutfit?: () => Promise<void>;
+  isRefreshingOutfit?: boolean;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -65,6 +67,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onUpdateGreeting,
   onDeleteMessage,
   onReloadMessage,
+  onRefreshOutfit,
+  isRefreshingOutfit = false,
 }) => {
   const [inputText, setInputText] = useState('');
   const [selectedUserImage, setSelectedUserImage] = useState<string | null>(null);
@@ -177,7 +181,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <span className="text-slate-200 font-medium group-hover:text-rose-300 transition">{girlfriend.name}</span>
             </div>
           </button>
-          <span className="text-slate-500 hidden md:inline">· Tenue : <span className="text-rose-300">{girlfriend.appearance.currentOutfitStyle}</span></span>
+          <div className="hidden md:flex items-center gap-1.5 text-slate-500">
+            <span>· Tenue : <span className="text-rose-300">{girlfriend.appearance.currentOutfitStyle}</span></span>
+            {onRefreshOutfit && (
+              <button
+                type="button"
+                onClick={() => onRefreshOutfit()}
+                disabled={isRefreshingOutfit || isTyping}
+                title="Recalculer sa tenue selon l'heure, la météo et son style"
+                aria-label="Rafraîchir la tenue"
+                className="p-1 rounded-md text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/25 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <RefreshCw className={`w-3 h-3 ${isRefreshingOutfit ? 'animate-spin text-rose-400' : ''}`} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Chat Mode Switch: Messages (SMS) vs In Real Life (IRL) */}
