@@ -108,8 +108,8 @@ Aura AI is designed primarily as a **self-hosted private companion app**:
 ### Method 1: Docker Compose
 1. **Clone the repository**:
    ```bash
-   git clone <YOUR_REPO_URL>
-   cd aura-ai
+   git clone https://github.com/CyberHmf/AuraAI.git
+   cd AuraAI
    ```
 2. *(Optional)* **Configure environment variables**:
    ```bash

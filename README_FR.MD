@@ -38,7 +38,7 @@ L'application est entièrement prête pour être conteneurisée et lancée en lo
 
 1. **Cloner le dépôt ou ouvrir le dossier du projet** :
    ```bash
-   git clone <URL_DU_DEPOT>
+   git clone https://github.com/CyberHmf/AuraAI.git
    cd AuraAI
    ```
 
