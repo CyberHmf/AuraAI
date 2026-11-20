@@ -90,7 +90,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isTyping]);
+  }, [messages, isTyping, isGeneratingSelfie]);
 
   // Handle image file selection from user device
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -564,14 +564,32 @@ export const ChatView: React.FC<ChatViewProps> = ({
           );
         })}
 
-        {/* Typing indicator */}
-        {isTyping && (
+        {/* Typing or Selfie Generation indicator */}
+        {(isTyping || isGeneratingSelfie) && (
           <div className="flex items-center gap-2 text-xs text-rose-300 pl-11">
-            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-              <span className="ml-1 text-[11px] text-slate-400">{girlfriend.name} regarde & écrit...</span>
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${
+                isGeneratingSelfie
+                  ? 'bg-rose-950/50 border-rose-500/40 shadow-sm shadow-rose-500/10'
+                  : 'bg-slate-900 border-slate-800'
+              }`}
+            >
+              {isGeneratingSelfie ? (
+                <>
+                  <Camera className="w-3.5 h-3.5 text-rose-400 animate-pulse shrink-0" />
+                  <span className="text-[11px] text-rose-200 font-medium">
+                    {girlfriend.name} est en train de prendre une photo pour toi...
+                  </span>
+                  <Loader2 className="w-3 h-3 text-rose-400 animate-spin shrink-0 ml-0.5" />
+                </>
+              ) : (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="ml-1 text-[11px] text-slate-400">{girlfriend.name} regarde & écrit...</span>
+                </>
+              )}
             </div>
           </div>
         )}

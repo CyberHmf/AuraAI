@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Camera, Sparkles, Wand2, Check } from 'lucide-react';
+import { X, Camera, Sparkles, Wand2, Check, Loader2 } from 'lucide-react';
 import { GirlfriendPersona } from '../types';
 
 interface CustomSelfieRequestModalProps {
@@ -222,6 +222,13 @@ export const CustomSelfieRequestModal: React.FC<CustomSelfieRequestModalProps> =
             </p>
           </div>
 
+          {isSubmitting && (
+            <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-500/30 flex items-center gap-2 text-xs text-rose-200 font-medium">
+              <Loader2 className="w-4 h-4 animate-spin text-rose-400 shrink-0" />
+              <span>{girlfriend.name} est en train de prendre une photo pour toi...</span>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="pt-2 flex items-center gap-3">
             <button
@@ -236,8 +243,8 @@ export const CustomSelfieRequestModal: React.FC<CustomSelfieRequestModalProps> =
               disabled={!customPrompt.trim() || isSubmitting}
               className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-semibold transition disabled:opacity-50 shadow-lg shadow-rose-500/20 text-xs flex items-center justify-center gap-2 active:scale-95"
             >
-              <Camera className="w-4 h-4" />
-              <span>{isSubmitting ? 'Génération...' : 'Prendre ce selfie 📸'}</span>
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+              <span>{isSubmitting ? 'Prise de photo...' : 'Prendre ce selfie 📸'}</span>
             </button>
           </div>
 
